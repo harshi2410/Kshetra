@@ -1,0 +1,75 @@
+{
+  "project_id": "test-benchmark-001",
+  "ground_truth_version": "v1",
+  "pipeline_version": "1.0",
+  "git_commit": "HEAD",
+  "processing_time_ms": 42.38,
+  "peak_memory_kb": 16.97,
+  "geometry": {
+    "boundary_iou": 1.0,
+    "boundary_area_error_percent": 0.0,
+    "boundary_perimeter_error_percent": 0.0,
+    "is_valid": true,
+    "containment_failures": 0
+  },
+  "plots": {
+    "ground_truth_count": 2,
+    "predicted_count": 2,
+    "matched_count": 2,
+    "missing_count": 0,
+    "extra_count": 0,
+    "merged_count": 0,
+    "duplicated_count": 0,
+    "mean_iou": 1.0,
+    "median_iou": 1.0,
+    "mean_centroid_error": 0.0,
+    "mean_area_error_percent": 0.0
+  },
+  "roads": {
+    "ground_truth_count": 1,
+    "predicted_count": 1,
+    "road_overlap_iou": 1.0,
+    "length_error_percent": 0.0,
+    "connectivity_accuracy": 1.0
+  },
+  "ocr": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "exact_match_ratio": 1.0,
+    "normalized_match_ratio": 1.0,
+    "mean_levenshtein_distance": 0.0,
+    "wer": 0.0
+  },
+  "label_association": {
+    "total_labels": 2,
+    "associated_correctly": 2,
+    "incorrectly_associated": 0,
+    "unassociated": 0,
+    "accuracy": 1.0
+  },
+  "failure_categories": [],
+  "is_production_acceptable": true,
+  "stage_evidence": {
+    "boundary_evaluation": {
+      "pass": true,
+      "measured_iou": 1.0,
+      "threshold": 0.9
+    },
+    "plot_evaluation": {
+      "pass": true,
+      "measured_mean_iou": 1.0,
+      "threshold": 0.85
+    },
+    "ocr_evaluation": {
+      "pass": true,
+      "measured_recall": 1.0,
+      "threshold": 0.8
+    },
+    "label_association_evaluation": {
+      "pass": true,
+      "measured_accuracy": 1.0,
+      "threshold": 0.85
+    }
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "project_id": "test-benchmark-001",
+  "ground_truth_version": "v1",
+  "pipeline_version": "1.0",
+  "git_commit": "HEAD",
+  "processing_time_ms": 29.23,
+  "peak_memory_kb": 16.97,
+  "geometry": {
+    "boundary_iou": 0.9,
+    "boundary_area_error_percent": 10.0,
+    "boundary_perimeter_error_percent": 4.72,
+    "is_valid": true,
+    "containment_failures": 1
+  },
+  "plots": {
+    "ground_truth_count": 2,
+    "predicted_count": 1,
+    "matched_count": 1,
+    "missing_count": 1,
+    "extra_count": 0,
+    "merged_count": 1,
+    "duplicated_count": 0,
+    "mean_iou": 0.875,
+    "median_iou": 0.875,
+    "mean_centroid_error": 2.5,
+    "mean_area_error_percent": 12.5
+  },
+  "roads": {
+    "ground_truth_count": 1,
+    "predicted_count": 0,
+    "road_overlap_iou": 0.0,
+    "length_error_percent": 100.0,
+    "connectivity_accuracy": 0.0
+  },
+  "ocr": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "exact_match_ratio": 0.0,
+    "normalized_match_ratio": 0.0,
+    "mean_levenshtein_distance": 4.0,
+    "wer": 0.5714
+  },
+  "label_association": {
+    "total_labels": 1,
+    "associated_correctly": 1,
+    "incorrectly_associated": 0,
+    "unassociated": 0,
+    "accuracy": 1.0
+  },
+  "failure_categories": [
+    "MERGED_PLOTS",
+    "MISSING_PLOTS",
+    "OCR_FAILURE",
+    "ROAD_FAILURE"
+  ],
+  "is_production_acceptable": false,
+  "stage_evidence": {
+    "boundary_evaluation": {
+      "pass": true,
+      "measured_iou": 0.9,
+      "threshold": 0.9
+    },
+    "plot_evaluation": {
+      "pass": true,
+      "measured_mean_iou": 0.875,
+      "threshold": 0.85
+    },
+    "ocr_evaluation": {
+      "pass": false,
+      "measured_recall": 0.0,
+      "threshold": 0.8
+    },
+    "label_association_evaluation": {
+      "pass": true,
+      "measured_accuracy": 1.0,
+      "threshold": 0.85
+    }
+  }
+}

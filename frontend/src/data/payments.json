@@ -1,0 +1,58 @@
+[
+  {
+    "id": "pay_001",
+    "customerId": "cust_001",
+    "projectId": "proj_001",
+    "plotId": "plot_A12",
+    "amount": 500000,
+    "type": "Down Payment",
+    "method": "Bank Transfer",
+    "status": "Completed",
+    "dueDate": "2024-02-15",
+    "paidDate": "2024-02-14",
+    "receipt": "REC-2024-001",
+    "createdAt": "2024-02-10T08:00:00Z"
+  },
+  {
+    "id": "pay_002",
+    "customerId": "cust_001",
+    "projectId": "proj_001",
+    "plotId": "plot_A12",
+    "amount": 1000000,
+    "type": "Installment 1",
+    "method": "Cheque",
+    "status": "Completed",
+    "dueDate": "2024-05-15",
+    "paidDate": "2024-05-12",
+    "receipt": "REC-2024-002",
+    "createdAt": "2024-05-01T08:00:00Z"
+  },
+  {
+    "id": "pay_003",
+    "customerId": "cust_002",
+    "projectId": "proj_001",
+    "plotId": "plot_C08",
+    "amount": 700000,
+    "type": "Down Payment",
+    "method": "UPI",
+    "status": "Pending",
+    "dueDate": "2025-08-01",
+    "paidDate": null,
+    "receipt": null,
+    "createdAt": "2025-07-01T08:00:00Z"
+  },
+  {
+    "id": "pay_004",
+    "customerId": "cust_003",
+    "projectId": "proj_002",
+    "plotId": "plot_D14",
+    "amount": 2000000,
+    "type": "Full Payment",
+    "method": "Bank Transfer",
+    "status": "Completed",
+    "dueDate": "2024-08-10",
+    "paidDate": "2024-08-08",
+    "receipt": "REC-2024-003",
+    "createdAt": "2024-08-01T08:00:00Z"
+  }
+]

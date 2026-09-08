@@ -1,0 +1,32 @@
+[
+  {
+    "id": "brok_001",
+    "name": "Suresh Realtors",
+    "contactPerson": "Suresh Joshi",
+    "email": "suresh.realtors@email.com",
+    "phone": "+91 98001 12345",
+    "reraId": "A51800012345",
+    "commission": 2.5,
+    "totalDeals": 14,
+    "totalEarned": 650000,
+    "pendingPayout": 120000,
+    "assignedProjects": ["proj_001", "proj_002"],
+    "status": "Active",
+    "createdAt": "2024-01-20T08:00:00Z"
+  },
+  {
+    "id": "brok_002",
+    "name": "Prime Properties",
+    "contactPerson": "Kavita Nair",
+    "email": "prime.prop@email.com",
+    "phone": "+91 99887 65432",
+    "reraId": "A51800067890",
+    "commission": 2.0,
+    "totalDeals": 8,
+    "totalEarned": 380000,
+    "pendingPayout": 80000,
+    "assignedProjects": ["proj_001"],
+    "status": "Active",
+    "createdAt": "2024-02-05T08:00:00Z"
+  }
+]

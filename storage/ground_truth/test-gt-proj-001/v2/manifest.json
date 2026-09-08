@@ -1,0 +1,17 @@
+{
+  "version": "v2",
+  "files": [
+    "original/blueprint.png",
+    "universal_layout_model.json",
+    "layout.svg",
+    "processing_context.json",
+    "metadata.json"
+  ],
+  "hashes": {
+    "original/blueprint.png": "6ee456b5cc88dad8ae0b3c5f60d455cd654a38fc5ff6b237f5047d4afe42f04e",
+    "universal_layout_model.json": "cef725ef8fdd9850e93bc910ebf33318f0768ad23897d1b53c6945794fa8674f",
+    "layout.svg": "70652281cfa3c69ce5d6a5e4204d0975bd4fa268695636ada3bebf541633062a",
+    "processing_context.json": "802de5ccdc088bc2d2014fed414caed74cec1dc9ec5cda5ca85c081d371bf0dc",
+    "metadata.json": "0d7866eb6be22037b469aa5432f67c00a063b676ead7b1525f783d3c750d1190"
+  }
+}

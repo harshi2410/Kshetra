@@ -1,0 +1,54 @@
+[
+  {
+    "id": "doc_001",
+    "name": "Sale Agreement - Rajesh Sharma",
+    "type": "Sale Agreement",
+    "projectId": "proj_001",
+    "customerId": "cust_001",
+    "plotId": "plot_A12",
+    "fileSize": "2.4 MB",
+    "fileType": "PDF",
+    "uploadedAt": "2024-02-14T10:00:00Z",
+    "status": "Signed",
+    "tags": ["legal", "agreement", "signed"]
+  },
+  {
+    "id": "doc_002",
+    "name": "Allotment Letter - Priya Mehta",
+    "type": "Allotment Letter",
+    "projectId": "proj_001",
+    "customerId": "cust_002",
+    "plotId": "plot_C08",
+    "fileSize": "1.1 MB",
+    "fileType": "PDF",
+    "uploadedAt": "2024-03-20T09:30:00Z",
+    "status": "Issued",
+    "tags": ["allotment", "letter"]
+  },
+  {
+    "id": "doc_003",
+    "name": "Project Layout - Sunrise Valley",
+    "type": "Layout Plan",
+    "projectId": "proj_001",
+    "customerId": null,
+    "plotId": null,
+    "fileSize": "15.8 MB",
+    "fileType": "PNG",
+    "uploadedAt": "2024-01-12T08:00:00Z",
+    "status": "Approved",
+    "tags": ["layout", "plan", "approved"]
+  },
+  {
+    "id": "doc_004",
+    "name": "RERA Certificate - Sunrise Valley",
+    "type": "RERA Certificate",
+    "projectId": "proj_001",
+    "customerId": null,
+    "plotId": null,
+    "fileSize": "0.8 MB",
+    "fileType": "PDF",
+    "uploadedAt": "2024-01-10T08:00:00Z",
+    "status": "Valid",
+    "tags": ["rera", "certificate", "legal"]
+  }
+]

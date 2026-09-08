@@ -1,0 +1,37 @@
+{
+  "overview": {
+    "totalRevenue": 145000000,
+    "totalProjects": 3,
+    "totalPlotsSold": 132,
+    "totalCustomers": 98,
+    "totalBrokers": 12,
+    "pendingPayments": 8500000,
+    "revenueGrowth": 18.5,
+    "plotsSoldGrowth": 12.3
+  },
+  "monthlyRevenue": [
+    { "month": "Jan 2025", "revenue": 8500000, "target": 9000000 },
+    { "month": "Feb 2025", "revenue": 11200000, "target": 10000000 },
+    { "month": "Mar 2025", "revenue": 9800000, "target": 10000000 },
+    { "month": "Apr 2025", "revenue": 13400000, "target": 12000000 },
+    { "month": "May 2025", "revenue": 12100000, "target": 12000000 },
+    { "month": "Jun 2025", "revenue": 15600000, "target": 14000000 },
+    { "month": "Jul 2025", "revenue": 14200000, "target": 14000000 }
+  ],
+  "plotStatusBreakdown": [
+    { "status": "Sold", "count": 132, "percentage": 43.7 },
+    { "status": "Available", "count": 148, "percentage": 49.0 },
+    { "status": "Blocked", "count": 12, "percentage": 4.0 },
+    { "status": "Reserved", "count": 10, "percentage": 3.3 }
+  ],
+  "topBrokers": [
+    { "name": "Suresh Realtors", "deals": 14, "revenue": 8500000 },
+    { "name": "Prime Properties", "deals": 8, "revenue": 4200000 },
+    { "name": "City Realty", "deals": 6, "revenue": 3100000 }
+  ],
+  "paymentStatus": [
+    { "type": "Completed", "amount": 136500000, "count": 214 },
+    { "type": "Pending", "amount": 8500000, "count": 18 },
+    { "type": "Overdue", "amount": 2100000, "count": 5 }
+  ]
+}

@@ -1,0 +1,384 @@
+/* ============================================================
+   LandOS Custom Utilities & Responsive Layout System
+   ============================================================ */
+
+/* ── Glassmorphism Surface ── */
+.glass-surface {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .glass-surface {
+  background: rgba(23, 21, 21, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ── Custom interactive active border styling ── */
+.active-border-bottom {
+  position: relative;
+}
+
+.active-border-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-full);
+}
+
+/* ── Responsive Grid & Flexbox Helpers ── */
+.responsive-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.responsive-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.responsive-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.responsive-form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.responsive-form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.responsive-stack {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.table-responsive-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.horizontal-scroll-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+.horizontal-scroll-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── KPI Banner Responsive Grid ── */
+.kpi-banner-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  background-color: var(--df-card-bg);
+  border: 1px solid var(--df-card-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.kpi-item {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  border-right: 1px solid var(--df-border);
+}
+
+.kpi-item:last-child {
+  border-right: none;
+}
+
+.dashboard-charts-grid {
+  display: grid;
+  grid-template-columns: 8fr 4fr;
+  gap: 8px;
+}
+
+.dashboard-two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ── Responsive Display Breakpoints ── */
+.hide-on-mobile {
+  display: block;
+}
+.show-on-mobile {
+  display: none !important;
+}
+.hide-on-desktop {
+  display: none !important;
+}
+.show-on-desktop {
+  display: block !important;
+}
+
+/* Tablet & Mobile Media Queries (<= 1200px) */
+@media (max-width: 1200px) {
+  .kpi-banner-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .kpi-item:nth-child(4n) {
+    border-right: none;
+  }
+  .kpi-item:nth-child(-n+4) {
+    border-bottom: 1px solid var(--df-border);
+  }
+}
+
+/* Tablet Media Queries (<= 1024px) */
+@media (max-width: 1024px) {
+  .responsive-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .responsive-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dashboard-charts-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-two-col-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile Media Queries (<= 768px) */
+@media (max-width: 768px) {
+  :root {
+    --df-navbar-height: 56px;
+    --df-sidebar-width: 0px;
+    --df-content-padding: 12px;
+  }
+
+  .hide-on-mobile {
+    display: none !important;
+  }
+  .show-on-mobile {
+    display: block !important;
+  }
+  .hide-on-desktop {
+    display: flex !important;
+  }
+  .show-on-desktop {
+    display: none !important;
+  }
+
+  .responsive-grid-4,
+  .responsive-grid-3,
+  .responsive-grid-2,
+  .responsive-form-grid-2,
+  .responsive-form-grid-3,
+  .dashboard-charts-grid,
+  .dashboard-two-col-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .responsive-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .w-full-on-mobile {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .mobile-search-bar {
+    max-width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .app-main-layout {
+    margin-left: 0 !important;
+    padding: 12px 12px 24px !important;
+  }
+
+  .desktop-fixed-sidebar {
+    display: none !important;
+  }
+
+  .mobile-header-bar {
+    padding: 0 12px !important;
+  }
+
+  .page-header-container {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .btn-group-responsive {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .btn-group-responsive > button,
+  .btn-group-responsive > a {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Responsive Canvas & Map Drawer */
+  .layout-canvas-responsive {
+    height: 52vh !important;
+    min-height: 320px !important;
+  }
+
+  .floating-plot-drawer {
+    position: absolute !important;
+    top: auto !important;
+    bottom: 12px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: 100% !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    background: rgba(18, 24, 38, 0.92) !important;
+  }
+}
+
+/* Small Screens (<= 640px) */
+@media (max-width: 640px) {
+  .kpi-banner-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .kpi-item {
+    border-right: none !important;
+    border-bottom: 1px solid var(--df-border) !important;
+  }
+  .kpi-item:nth-child(2n+1) {
+    border-right: 1px solid var(--df-border) !important;
+  }
+  .kpi-item:nth-last-child(-n+2) {
+    border-bottom: none !important;
+  }
+
+  .responsive-stack-mobile {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+}
+
+/* Extra Small Screens (<= 480px) */
+@media (max-width: 480px) {
+  .text-title-responsive {
+    font-size: 1.1rem !important;
+  }
+  .mobile-card-compact {
+    padding: 14px !important;
+  }
+}
+
+/* ── Animations ── */
+@keyframes landos-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes landos-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes landos-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes landos-drawer-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes landos-drawer-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes landos-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-landos-spin {
+  animation: landos-spin 0.8s linear infinite;
+}
+
+.animate-landos-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-surface) 25%,
+    var(--color-bg-surface-hover) 50%,
+    var(--color-bg-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: landos-shimmer 1.8s infinite ease-in-out;
+}
+
+.animate-landos-modal {
+  animation: landos-modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-landos-drawer-right {
+  animation: landos-drawer-right 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-landos-drawer-left {
+  animation: landos-drawer-left 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-landos-fade {
+  animation: landos-fade-in 0.15s ease-out forwards;
+}
