@@ -457,8 +457,20 @@ export default function ContentLayout() {
                 color: 'var(--df-accent)', fontWeight: 700, fontSize: '11px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: '1.5px solid var(--df-accent)',
+                overflow: 'hidden',
               }}>
-                {getInitials(user?.name)}
+                {user?.avatar && typeof user.avatar === 'string' && user.avatar.startsWith('http') ? (
+                  <img
+                    src={user.avatar}
+                    alt={user?.name || 'User'}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  getInitials(user?.name)
+                )}
               </div>
               <div className="hide-on-mobile" style={{ textAlign: 'left', lineHeight: 1.2 }}>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--df-text)', margin: 0 }}>{getFirstName(user?.name)}</p>
@@ -471,7 +483,7 @@ export default function ContentLayout() {
                 <div onClick={() => setIsProfileOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-overlay)' }} />
                 <div style={{
                   position: 'absolute', right: 0, top: '42px',
-                  width: '200px', backgroundColor: 'var(--df-card-bg)',
+                  width: '210px', backgroundColor: 'var(--df-card-bg)',
                   border: '1px solid var(--df-border)',
                   borderRadius: '10px', boxShadow: 'var(--df-shadow-md)',
                   zIndex: 'var(--z-modal)', overflow: 'hidden',
@@ -479,7 +491,21 @@ export default function ContentLayout() {
                 }}>
                   <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--df-border)' }}>
                     <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--df-text)', margin: 0 }}>{user?.name || 'Shivam Admin'}</p>
-                    <p style={{ fontSize: '11px', color: 'var(--df-text-muted)', margin: '2px 0 0' }}>{user?.email || 'admin@landos.com'}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--df-text-muted)', margin: '2px 0 0', wordBreak: 'break-all' }}>{user?.email || 'admin@landos.com'}</p>
+                    {user?.auth_provider === 'google' && (
+                      <span style={{
+                        display: 'inline-block',
+                        fontSize: '10px',
+                        color: 'var(--df-accent)',
+                        marginTop: '5px',
+                        backgroundColor: 'var(--df-accent-soft)',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                      }}>
+                        Google Account
+                      </span>
+                    )}
                   </div>
                   <div style={{ padding: '4px 0' }}>
                     <Link

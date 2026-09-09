@@ -25,11 +25,11 @@ export function GeometryEditorModal({ isOpen, onClose, projectId, layoutId, init
   const { findSnapPoint } = useSnappingEngine({ snapEnabled });
   const [saving, setSaving] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(layoutStatus || 'DRAFT');
-  
+
   const [viewMode, setViewMode] = useState('BLUEPRINT'); // BLUEPRINT | MAP
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
-  
+
   const initialGeoref = useMemo(() => {
     return initialLayoutModel?.metadata?.georeference || {
       status: "UNCONFIGURED", provider: "OSM", latitude: null, longitude: null,
@@ -73,7 +73,7 @@ export function GeometryEditorModal({ isOpen, onClose, projectId, layoutId, init
     try {
       // First save the current model if there are unsaved changes
       await projectService.saveLayoutModel(projectId, layoutId, model, 'Pre-approval geometry save');
-      
+
       const res = await projectService.approveLayout(projectId, layoutId, 'Chief Architect');
       setCurrentStatus('APPROVED');
       setIsReviewOpen(false);
@@ -111,7 +111,7 @@ export function GeometryEditorModal({ isOpen, onClose, projectId, layoutId, init
   const handleSaveGeoref = async () => {
     try {
       // Create a function in projectService to patch georeference
-      const res = await fetch(`http://localhost:8001/api/v1/projects/${projectId}/layouts/${layoutId}/georeference`, {
+      const res = await fetch(`http://localhost:8000/api/v1/projects/${projectId}/layouts/${layoutId}/georeference`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(georef)
@@ -178,8 +178,8 @@ export function GeometryEditorModal({ isOpen, onClose, projectId, layoutId, init
         )}
 
         {viewMode === 'MAP' && (
-          <GeoreferenceControls 
-            georef={georef} 
+          <GeoreferenceControls
+            georef={georef}
             onTransformChange={handleGeorefTransformChange}
             onReset={handleResetGeoref}
             onSave={handleSaveGeoref}

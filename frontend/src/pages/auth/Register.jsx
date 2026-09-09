@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { AlertCircle, Eye, EyeOff, Map, TrendingUp, Users, Shield, X, ExternalLink, Key, Sparkles, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, Eye, EyeOff, Map, TrendingUp, Shield, X, ExternalLink, Key, Sparkles, Check } from 'lucide-react';
 import useAuth from '../../auth/useAuth';
 import { getGoogleClientId, setGoogleClientId, triggerGoogleBrowserAuth } from '../../auth/googleAuth';
 
-export default function Login() {
+export default function Register() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { login, loginWithGoogle, isAuthenticated } = useAuth();
+  const { register, loginWithGoogle, isAuthenticated } = useAuth();
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [agreeTerms, setAgreeTerms] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [errors, setErrors] = useState({});
   const [authError, setAuthError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,17 +25,44 @@ export default function Login() {
   const [modalClientId, setModalClientId] = useState('');
   const [modalSaved, setModalSaved] = useState(false);
 
-  const from = location.state?.from?.pathname || '/dashboard';
-
   useEffect(() => {
-    if (isAuthenticated) navigate(from, { replace: true });
-  }, [isAuthenticated, navigate, from]);
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  // Evaluate password strength
+  const getPasswordStrength = (pwd) => {
+    if (!pwd) return { score: 0, label: '', color: 'transparent' };
+    let score = 0;
+    if (pwd.length >= 6) score++;
+    if (pwd.length >= 10) score++;
+    if (/[A-Z]/.test(pwd)) score++;
+    if (/[0-9]/.test(pwd)) score++;
+    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+    if (score <= 1) return { score: 1, label: 'Weak', color: '#EF4444' };
+    if (score <= 3) return { score: 2, label: 'Fair', color: '#F59E0B' };
+    if (score === 4) return { score: 3, label: 'Good', color: '#3B82F6' };
+    return { score: 4, label: 'Strong', color: '#10B981' };
+  };
+
+  const strength = getPasswordStrength(password);
 
   const validate = () => {
     const e = {};
+    if (!name.trim()) e.name = 'Full name is required';
     if (!email.trim()) e.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Enter a valid email';
+    else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Enter a valid email address';
+
     if (!password) e.password = 'Password is required';
+    else if (password.length < 6) e.password = 'Password must be at least 6 characters';
+
+    if (!confirmPassword) e.confirmPassword = 'Confirm your password';
+    else if (password !== confirmPassword) e.confirmPassword = 'Passwords do not match';
+
+    if (!agreeTerms) e.agreeTerms = 'You must accept the terms of service';
+
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -41,17 +72,24 @@ export default function Login() {
     setAuthError('');
     if (!validate()) return;
     setLoading(true);
+
     try {
-      await login({ email, password, rememberMe });
-      navigate(from, { replace: true });
+      await register({
+        name,
+        email,
+        password,
+        company,
+        rememberMe: true
+      });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
-      setAuthError(err.message || 'Invalid credentials. Please try again.');
+      setAuthError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async (overrideClientId = null) => {
+  const handleGoogleSignUp = async (overrideClientId = null) => {
     setAuthError('');
     const clientId = overrideClientId || getGoogleClientId();
 
@@ -68,14 +106,14 @@ export default function Login() {
         email: account.email,
         name: account.name,
         avatar: account.avatar,
-        rememberMe,
+        rememberMe: true,
       });
-      navigate(from, { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       if (err.message === 'NO_CLIENT_ID') {
         setShowConfigModal(true);
       } else {
-        setAuthError(err.message || 'Google sign-in was cancelled or failed.');
+        setAuthError(err.message || 'Google registration was cancelled or failed.');
       }
     } finally {
       setGoogleLoading(false);
@@ -90,9 +128,9 @@ export default function Login() {
         email: 'alexander.wright@gmail.com',
         name: 'Alexander Wright',
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-        rememberMe,
+        rememberMe: true,
       });
-      navigate(from, { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setAuthError(err.message || 'Demo Google sign-in failed.');
     } finally {
@@ -107,14 +145,13 @@ export default function Login() {
     setModalSaved(true);
     setTimeout(() => {
       setShowConfigModal(false);
-      handleGoogleSignIn(modalClientId.trim());
+      handleGoogleSignUp(modalClientId.trim());
     }, 400);
   };
 
-  /* ── shared input style ── */
   const inputStyle = (hasError) => ({
     width: '100%',
-    height: '48px',
+    height: '46px',
     padding: '0 16px',
     border: `1px solid ${hasError ? 'var(--df-danger)' : 'var(--df-border-input)'}`,
     borderRadius: '8px',
@@ -128,10 +165,9 @@ export default function Login() {
   });
 
   const features = [
-    { icon: Map, text: 'Manage all your real estate projects' },
-    { icon: Users, text: 'Track customers & broker networks' },
-    { icon: TrendingUp, text: 'Monitor revenue & plot sales in real-time' },
-    { icon: Shield, text: 'Secure, role-based access control' },
+    { icon: Map, text: 'Autonomous CAD & GIS plot subdivision layouts' },
+    { icon: Shield, text: 'Municipal regulatory & legal compliance checks' },
+    { icon: TrendingUp, text: 'Real-time sales CRM, broker payouts & collections' },
   ];
 
   return (
@@ -150,7 +186,7 @@ export default function Login() {
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Decorative blobs */}
+        {/* Decorative background blurs */}
         <div style={{
           position: 'absolute', top: '-80px', right: '-80px',
           width: '320px', height: '320px', borderRadius: '50%',
@@ -168,10 +204,10 @@ export default function Login() {
             fontSize: '13px', fontWeight: 700, letterSpacing: '0.18em',
             textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)',
           }}>
-            ENTERPRISE
+            ENTERPRISE PLATFORM
           </span>
           <h1 style={{
-            fontSize: '3.5rem', fontWeight: 300, lineHeight: 1.15,
+            fontSize: '3.25rem', fontWeight: 300, lineHeight: 1.15,
             letterSpacing: '-0.03em', color: '#FFFFFF',
             margin: '8px 0 0', fontFamily: 'var(--font-display)',
           }}>
@@ -179,14 +215,14 @@ export default function Login() {
           </h1>
           <p style={{
             fontSize: '1.05rem', color: 'rgba(255,255,255,0.65)',
-            lineHeight: 1.6, marginTop: '12px', maxWidth: '360px',
+            lineHeight: 1.6, marginTop: '12px', maxWidth: '380px',
           }}>
-            Real estate portfolio & operations command center for modern developers.
+            Join top land developers and asset managers building high-margin plotted communities with autonomous intelligence.
           </p>
         </div>
 
         {/* Feature list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative', zIndex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative', zIndex: 1 }}>
           {features.map(({ icon: Icon, text }, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
@@ -229,31 +265,31 @@ export default function Login() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem 1.5rem',
-        minHeight: '100dvh',
+        padding: '2.5rem 1.5rem',
+        overflowY: 'auto',
       }}>
-        <div style={{ width: '100%', maxWidth: '380px' }}>
+        <div style={{ width: '100%', maxWidth: '420px' }}>
 
           {/* Form header */}
-          <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: '1.75rem' }}>
             <h2 style={{
-              fontSize: '2rem', fontWeight: 400, color: 'var(--df-text)',
+              fontSize: '1.85rem', fontWeight: 400, color: 'var(--df-text)',
               letterSpacing: '-0.02em', lineHeight: 1.2,
-              fontFamily: 'var(--font-display)', margin: '0 0 8px',
+              fontFamily: 'var(--font-display)', margin: '0 0 6px',
             }}>
-              Welcome back
+              Create your account
             </h2>
-            <p style={{ fontSize: '14px', color: 'var(--df-text-muted)', margin: 0 }}>
-              Sign in to your LandOS workspace
+            <p style={{ fontSize: '13.5px', color: 'var(--df-text-muted)', margin: 0 }}>
+              Get started with enterprise land development tools
             </p>
           </div>
 
           {/* Google SSO Button */}
           <button
-            id="login-google"
+            id="register-google"
             type="button"
             disabled={loading || googleLoading}
-            onClick={handleGoogleSignIn}
+            onClick={handleGoogleSignUp}
             style={{
               width: '100%',
               height: '46px',
@@ -291,29 +327,17 @@ export default function Login() {
                 <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
               </svg>
             )}
-            <span>{googleLoading ? 'Signing in with Google…' : 'Continue with Google'}</span>
+            <span>{googleLoading ? 'Setting up Google account…' : 'Continue with Google'}</span>
           </button>
 
           {/* Divider */}
           <div style={{ display: 'flex', alignItems: 'center', margin: '0 0 18px', gap: '12px' }}>
             <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--df-border)' }} />
-            <span style={{ fontSize: '12px', color: 'var(--df-text-muted)', textTransform: 'lowercase' }}>or continue with email</span>
+            <span style={{ fontSize: '12px', color: 'var(--df-text-muted)', textTransform: 'lowercase' }}>or register with email</span>
             <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--df-border)' }} />
           </div>
 
-          {/* Quick fill hint */}
-          <div style={{
-            padding: '8px 12px', borderRadius: '6px', marginBottom: '20px',
-            backgroundColor: 'var(--df-accent-soft)',
-            border: '1px solid rgba(122,30,58,0.15)',
-            fontSize: '12px', color: 'var(--df-accent)',
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <Shield style={{ width: '13px', height: '13px', flexShrink: 0 }} />
-            <span>Use <strong>admin@landos.com</strong> / <strong>admin123</strong></span>
-          </div>
-
-          {/* Error */}
+          {/* Error Banner */}
           {authError && (
             <div style={{
               padding: '10px 12px', borderRadius: '6px', marginBottom: '16px',
@@ -342,20 +366,41 @@ export default function Login() {
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Registration Form */}
+          <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Name */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '5px' }}>
+                Full Name
+              </label>
+              <input
+                id="register-name"
+                type="text"
+                value={name}
+                onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: '' })); }}
+                placeholder="Alexander Wright"
+                autoComplete="name"
+                style={inputStyle(errors.name)}
+                onFocus={e => { e.target.style.borderColor = 'var(--df-accent)'; e.target.style.boxShadow = '0 0 0 3px var(--df-accent-soft)'; }}
+                onBlur={e => { e.target.style.borderColor = errors.name ? 'var(--df-danger)' : 'var(--df-border-input)'; e.target.style.boxShadow = 'none'; }}
+              />
+              {errors.name && (
+                <p style={{ fontSize: '11.5px', color: 'var(--df-danger)', marginTop: '4px' }}>{errors.name}</p>
+              )}
+            </div>
 
             {/* Email */}
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '6px' }}>
-                Email address
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '5px' }}>
+                Work Email
               </label>
               <input
-                id="login-email"
+                id="register-email"
                 type="email"
                 value={email}
                 onChange={e => { setEmail(e.target.value); setErrors(p => ({ ...p, email: '' })); }}
-                placeholder="admin@landos.com"
+                placeholder="alexander@company.com"
                 autoComplete="email"
                 style={inputStyle(errors.email)}
                 onFocus={e => { e.target.style.borderColor = 'var(--df-accent)'; e.target.style.boxShadow = '0 0 0 3px var(--df-accent-soft)'; }}
@@ -366,19 +411,37 @@ export default function Login() {
               )}
             </div>
 
+            {/* Company (Optional) */}
+            <div>
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '5px' }}>
+                <span>Company / Developer Name</span>
+                <span style={{ color: 'var(--df-text-muted)', fontSize: '11.5px', fontWeight: 400 }}>Optional</span>
+              </label>
+              <input
+                id="register-company"
+                type="text"
+                value={company}
+                onChange={e => setCompany(e.target.value)}
+                placeholder="Apex Realty Developers"
+                style={inputStyle(false)}
+                onFocus={e => { e.target.style.borderColor = 'var(--df-accent)'; e.target.style.boxShadow = '0 0 0 3px var(--df-accent-soft)'; }}
+                onBlur={e => { e.target.style.borderColor = 'var(--df-border-input)'; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
+
             {/* Password */}
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '5px' }}>
                 Password
               </label>
               <div style={{ position: 'relative' }}>
                 <input
-                  id="login-password"
+                  id="register-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => { setPassword(e.target.value); setErrors(p => ({ ...p, password: '' })); }}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
+                  placeholder="Min. 6 characters"
+                  autoComplete="new-password"
                   style={{ ...inputStyle(errors.password), paddingRight: '44px' }}
                   onFocus={e => { e.target.style.borderColor = 'var(--df-accent)'; e.target.style.boxShadow = '0 0 0 3px var(--df-accent-soft)'; }}
                   onBlur={e => { e.target.style.borderColor = errors.password ? 'var(--df-danger)' : 'var(--df-border-input)'; e.target.style.boxShadow = 'none'; }}
@@ -397,34 +460,92 @@ export default function Login() {
                     : <Eye style={{ width: '15px', height: '15px' }} />}
                 </button>
               </div>
+
+              {/* Password strength meter */}
+              {password && (
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ display: 'flex', gap: '4px', height: '4px', marginBottom: '4px' }}>
+                    {[1, 2, 3, 4].map((step) => (
+                      <div
+                        key={step}
+                        style={{
+                          flex: 1,
+                          borderRadius: '2px',
+                          backgroundColor: step <= strength.score ? strength.color : 'var(--df-border)',
+                          transition: 'background-color 0.2s',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '11px', color: strength.color, fontWeight: 500 }}>
+                    {strength.label} password
+                  </span>
+                </div>
+              )}
+
               {errors.password && (
                 <p style={{ fontSize: '11.5px', color: 'var(--df-danger)', marginTop: '4px' }}>{errors.password}</p>
               )}
             </div>
 
-            {/* Remember me */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={e => setRememberMe(e.target.checked)}
-                  style={{ width: '14px', height: '14px', accentColor: 'var(--df-accent)', cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '13px', color: 'var(--df-text-muted)' }}>Remember me</span>
+            {/* Confirm Password */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--df-text-soft)', marginBottom: '5px' }}>
+                Confirm Password
               </label>
-              <button
-                type="button"
-                onClick={() => navigate('/forgot-password')}
-                style={{ fontSize: '13px', color: 'var(--df-accent)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500 }}
-              >
-                Forgot password?
-              </button>
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="register-confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => { setConfirmPassword(e.target.value); setErrors(p => ({ ...p, confirmPassword: '' })); }}
+                  placeholder="Repeat your password"
+                  autoComplete="new-password"
+                  style={{ ...inputStyle(errors.confirmPassword), paddingRight: '44px' }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--df-accent)'; e.target.style.boxShadow = '0 0 0 3px var(--df-accent-soft)'; }}
+                  onBlur={e => { e.target.style.borderColor = errors.confirmPassword ? 'var(--df-danger)' : 'var(--df-border-input)'; e.target.style.boxShadow = 'none'; }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(v => !v)}
+                  style={{
+                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: 'var(--df-text-muted)', display: 'flex', padding: '4px',
+                  }}
+                >
+                  {showConfirmPassword
+                    ? <EyeOff style={{ width: '15px', height: '15px' }} />
+                    : <Eye style={{ width: '15px', height: '15px' }} />}
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <p style={{ fontSize: '11.5px', color: 'var(--df-danger)', marginTop: '4px' }}>{errors.confirmPassword}</p>
+              )}
+            </div>
+
+            {/* Terms checkbox */}
+            <div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  id="register-terms"
+                  type="checkbox"
+                  checked={agreeTerms}
+                  onChange={e => { setAgreeTerms(e.target.checked); setErrors(p => ({ ...p, agreeTerms: '' })); }}
+                  style={{ width: '15px', height: '15px', accentColor: 'var(--df-accent)', marginTop: '2px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '12.5px', color: 'var(--df-text-muted)', lineHeight: 1.4 }}>
+                  I agree to the <span style={{ color: 'var(--df-accent)', fontWeight: 500 }}>Terms of Service</span> and <span style={{ color: 'var(--df-accent)', fontWeight: 500 }}>Privacy Policy</span>.
+                </span>
+              </label>
+              {errors.agreeTerms && (
+                <p style={{ fontSize: '11.5px', color: 'var(--df-danger)', marginTop: '4px' }}>{errors.agreeTerms}</p>
+              )}
             </div>
 
             {/* Submit */}
             <button
-              id="login-submit"
+              id="register-submit"
               type="submit"
               disabled={loading || googleLoading}
               style={{
@@ -438,6 +559,7 @@ export default function Login() {
                 transition: 'background-color 0.15s, box-shadow 0.15s',
                 boxShadow: '0 4px 14px rgba(122,30,58,0.25)',
                 fontFamily: 'var(--font-sans)',
+                marginTop: '4px',
               }}
               onMouseEnter={e => { if (!loading && !googleLoading) e.currentTarget.style.backgroundColor = 'var(--df-accent-alt)'; }}
               onMouseLeave={e => { if (!loading && !googleLoading) e.currentTarget.style.backgroundColor = 'var(--df-accent)'; }}
@@ -450,22 +572,22 @@ export default function Login() {
                     animation: 'landos-spin 0.7s linear infinite',
                     display: 'inline-block',
                   }} />
-                  Signing in…
+                  Creating account…
                 </>
-              ) : 'Sign in to LandOS'}
+              ) : 'Create LandOS Account'}
             </button>
 
           </form>
 
-          {/* Create Account Link */}
+          {/* Already have an account */}
           <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
             <span style={{ fontSize: '13.5px', color: 'var(--df-text-muted)' }}>
-              Don't have an account?{' '}
+              Already have an account?{' '}
             </span>
             <button
               type="button"
-              id="go-to-register"
-              onClick={() => navigate('/register')}
+              id="go-to-login"
+              onClick={() => navigate('/login')}
               style={{
                 fontSize: '13.5px',
                 color: 'var(--df-accent)',
@@ -478,14 +600,13 @@ export default function Login() {
               onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
               onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
             >
-              Create an account
+              Sign in
             </button>
           </div>
 
           {/* Footer note */}
           <p style={{ fontSize: '11.5px', color: 'var(--df-text-muted)', textAlign: 'center', marginTop: '1.75rem' }}>
-            Protected by enterprise-grade security.
-            <br />Contact your administrator to reset access.
+            Enterprise data protected by 256-bit encryption.
           </p>
         </div>
       </div>

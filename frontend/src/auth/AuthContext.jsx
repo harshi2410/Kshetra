@@ -10,6 +10,8 @@ export const AuthContext = createContext({
   loading: true,
   isAuthenticated: false,
   login: async () => {},
+  register: async () => {},
+  loginWithGoogle: async () => {},
   logout: async () => {},
   hasRole: () => false,
   hasPermission: () => false

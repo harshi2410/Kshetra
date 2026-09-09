@@ -68,6 +68,26 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
+   * Perform user registration
+   */
+  const register = useCallback(async ({ name, email, password, company, rememberMe }) => {
+    const response = await authService.register({ name, email, password, company, rememberMe });
+    setUser(response.user);
+    setToken(response.token);
+    return response;
+  }, []);
+
+  /**
+   * Perform Google OAuth login
+   */
+  const loginWithGoogle = useCallback(async (params = {}) => {
+    const response = await authService.loginWithGoogle(params);
+    setUser(response.user);
+    setToken(response.token);
+    return response;
+  }, []);
+
+  /**
    * Perform user logout
    */
   const logout = useCallback(async () => {
@@ -109,10 +129,12 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: Boolean(user && token),
     login,
+    register,
+    loginWithGoogle,
     logout,
     hasRole,
     hasPermission
-  }), [user, token, loading, login, logout, hasRole, hasPermission]);
+  }), [user, token, loading, login, register, loginWithGoogle, logout, hasRole, hasPermission]);
 
   return (
     <AuthContext.Provider value={value}>

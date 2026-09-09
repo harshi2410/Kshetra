@@ -26,7 +26,8 @@ from app.models import Base
 # add your model's MetaData object here
 target_metadata = Base.metadata
 
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+db_url = settings.get_database_url() if hasattr(settings, "get_database_url") and callable(settings.get_database_url) else (settings.DATABASE_URL or "sqlite:///./landos.db")
+config.set_main_option("sqlalchemy.url", db_url)
 
 
 def run_migrations_offline() -> None:

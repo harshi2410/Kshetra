@@ -14,15 +14,20 @@ class Settings(BaseSettings):
         "http://localhost:8000"
     ]
     
-    # Database Settings (For Part B)
+    # Database Settings
+    DATABASE_URL: Optional[str] = None
     POSTGRES_SERVER: str = "127.0.0.1"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "12345"
     POSTGRES_DB: str = "landos_db"
     
-    @property
-    def DATABASE_URL(self) -> str:
+    # Google OAuth
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    
+    def get_database_url(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     class Config:
