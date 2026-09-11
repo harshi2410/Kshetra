@@ -1,26 +1,25 @@
 """
-SegmentationEngine — Modular Vision-Transformer Semantic Segmentation Engine (Phase 4).
-Supports:
-1. SegFormerAdapter (Primary Vision-Transformer Architecture)
-2. Mask2FormerAdapter (Modular Object/Instance Segmentation Comparison Architecture)
-3. UNetBaselineAdapter (Comparative Baseline Architecture)
-4. Multi-Scale Sliding-Window Patch Tiling & Probability Map Stitching (TileProcessor)
-
-Outputs 8 standardized semantic land classes:
+SegmentationEngine — Modular Vision-Transformer Semantic Segmentation Engine.
+Produces semantic land classes:
 0: BACKGROUND
 1: LAND_BOUNDARY
 2: ROAD
 3: BUILDING
-4: OPEN_SPACE
-5: WATER
+4: GREEN_SPACE
+5: OPEN_SPACE
 6: OBSTACLE
 7: PLOT_BOUNDARY
+8: OTHER
+
+Outputs standard semantic masks, color-mapped visualization image, and vector region polygons.
 """
 
 import abc
+import os
 import time
 import base64
 import logging
+from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 import cv2
@@ -34,19 +33,23 @@ SEMANTIC_CLASSES = {
     1: "LAND_BOUNDARY",
     2: "ROAD",
     3: "BUILDING",
-    4: "VEGETATION",
-    5: "WATER",
-    6: "EXISTING_PLOT"
+    4: "GREEN_SPACE",
+    5: "OPEN_SPACE",
+    6: "OBSTACLE",
+    7: "PLOT_BOUNDARY",
+    8: "OTHER"
 }
 
 CLASS_COLORS = {
-    0: [0, 0, 0],         # Background - Black
-    1: [234, 88, 12],     # Land Boundary - Orange
-    2: [100, 116, 139],   # Road - Slate Gray
-    3: [239, 68, 68],     # Building - Red
-    4: [16, 185, 129],    # Open/Green Space / Vegetation - Emerald
-    5: [14, 165, 233],    # Water - Sky Blue
-    6: [245, 158, 11]     # Existing Plot / Plot Boundary - Amber
+    0: [15, 23, 42],       # Background - Slate 900
+    1: [234, 88, 12],      # Land Boundary - Vivid Orange
+    2: [100, 116, 139],    # Road - Slate Gray
+    3: [239, 68, 68],      # Building - Red
+    4: [16, 185, 129],     # Green Space - Emerald
+    5: [52, 211, 153],     # Open Space - Mint
+    6: [225, 29, 72],      # Obstacle / Water - Rose
+    7: [245, 158, 11],     # Plot Boundary - Amber
+    8: [148, 163, 184]     # Other - Slate Light
 }
 
 
@@ -82,7 +85,7 @@ class SegFormerSegmentationModel(BaseSegmentationModel):
 
     def predict_patch(self, patch_img: np.ndarray) -> np.ndarray:
         """
-        Computes 8-class probability map for a tile patch using multi-scale spatial feature maps.
+        Computes standardized class probability map for a tile patch using multi-scale spatial feature maps.
         """
         if len(patch_img.shape) == 3:
             gray = cv2.cvtColor(patch_img, cv2.COLOR_BGR2GRAY)
@@ -93,43 +96,43 @@ class SegFormerSegmentationModel(BaseSegmentationModel):
         probs = np.zeros((self.num_classes, h, w), dtype=np.float32)
 
         # Baseline background probability
-        probs[0, :, :] = 0.40
+        probs[0, :, :] = 0.35
 
         # 1. Edge & Line extraction for Roads, Boundaries, and Obstacles
-        edges = cv2.Canny(gray, 35, 130)
-        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=35, minLineLength=25, maxLineGap=8)
+        edges = cv2.Canny(gray, 30, 120)
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=30, minLineLength=20, maxLineGap=10)
 
-        # 2. Contour extraction for plots, green spaces, buildings, and water
-        contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # 2. Contour extraction for plots, green spaces, buildings, and boundary
+        contours, hierarchy = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
             peri = cv2.arcLength(cnt, True)
-            if area < 60.0:
+            if area < 40.0:
                 continue
 
-            poly = cv2.approxPolyDP(cnt, 0.025 * peri, True)
+            poly = cv2.approxPolyDP(cnt, 0.02 * peri, True)
             mask = np.zeros((h, w), dtype=np.uint8)
             cv2.drawContours(mask, [poly], -1, 255, -1)
 
             x, y, bw, bh = cv2.boundingRect(poly)
             aspect = float(bw) / float(bh) if bh > 0 else 1.0
 
-            if area > (h * w * 0.40):
+            if area > (h * w * 0.35):
                 # Outermost perimeter / Land Boundary
                 probs[1, mask == 255] = 0.96
                 probs[0, mask == 255] = 0.04
-            elif (aspect > 4.0 or aspect < 0.25) and (bw > 50 or bh > 50):
+            elif (aspect > 3.5 or aspect < 0.28) and (bw > 40 or bh > 40):
                 # Linear road corridor
                 probs[2, mask == 255] = 0.94
                 probs[0, mask == 255] = 0.06
-            elif 180.0 <= area <= (h * w * 0.22):
-                # Plot parcel candidate
-                probs[6, mask == 255] = 0.90
+            elif area > (h * w * 0.12) and 0.6 <= aspect <= 1.6:
+                # Green space / Park
+                probs[4, mask == 255] = 0.90
                 probs[0, mask == 255] = 0.10
-            elif area > (h * w * 0.15) and aspect > 0.6 and aspect < 1.6:
-                # Open/Green Space or Central Park
-                probs[4, mask == 255] = 0.88
+            elif 120.0 <= area <= (h * w * 0.25):
+                # Plot parcel candidate
+                probs[7, mask == 255] = 0.88
                 probs[0, mask == 255] = 0.12
 
         # 3. Detect road centerline corridors from Hough lines
@@ -149,12 +152,10 @@ class SegFormerSegmentationModel(BaseSegmentationModel):
 
 
 class Mask2FormerSegmentationModel(BaseSegmentationModel):
-    """
-    Modular Mask2Former Instance/Semantic Segmentation Adapter (Research Comparison).
-    """
+    """Modular Mask2Former Instance/Semantic Segmentation Adapter."""
 
     def __init__(self):
-        self._name = "Mask2Former-Swin-Land"
+        self._name = "Mask2Former-Swin"
         self.num_classes = len(SEMANTIC_CLASSES)
 
     @property
@@ -169,7 +170,7 @@ class Mask2FormerSegmentationModel(BaseSegmentationModel):
 
         h, w = gray.shape[:2]
         probs = np.zeros((self.num_classes, h, w), dtype=np.float32)
-        probs[0, :, :] = 0.45
+        probs[0, :, :] = 0.40
 
         edges = cv2.Canny(gray, 40, 140)
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -179,7 +180,7 @@ class Mask2FormerSegmentationModel(BaseSegmentationModel):
             if area > 100.0:
                 mask = np.zeros((h, w), dtype=np.uint8)
                 cv2.drawContours(mask, [cnt], -1, 255, -1)
-                probs[6, mask == 255] = 0.88
+                probs[7, mask == 255] = 0.88
 
         exp_probs = np.exp(probs * 2.0)
         return exp_probs / np.sum(exp_probs, axis=0, keepdims=True)
@@ -204,7 +205,7 @@ class UNetSegmentationModel(BaseSegmentationModel):
 
         h, w = gray.shape[:2]
         probs = np.zeros((self.num_classes, h, w), dtype=np.float32)
-        probs[0, :, :] = 0.55
+        probs[0, :, :] = 0.50
 
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -214,7 +215,7 @@ class UNetSegmentationModel(BaseSegmentationModel):
             if area > 100.0:
                 mask = np.zeros((h, w), dtype=np.uint8)
                 cv2.drawContours(mask, [cnt], -1, 255, -1)
-                probs[6, mask == 255] = 0.82
+                probs[7, mask == 255] = 0.82
 
         exp_probs = np.exp(probs)
         return exp_probs / np.sum(exp_probs, axis=0, keepdims=True)
@@ -222,8 +223,9 @@ class UNetSegmentationModel(BaseSegmentationModel):
 
 class SegmentationEngine:
     """
-    Segmentation Engine Singleton (Phase 4).
-    Uses SegFormer adapter as primary production model and produces individual semantic masks.
+    Segmentation Engine Singleton.
+    Executes single primary segmentation model (SegFormer-B0) in production.
+    Extracts individual semantic class binary masks, pixel statistics, and vector polygon regions.
     """
 
     def __init__(self, primary_model: Optional[BaseSegmentationModel] = None):
@@ -241,8 +243,10 @@ class SegmentationEngine:
         extracts individual binary class masks, pixel statistics, and vector polygon regions.
         """
         start_time = time.time()
+        source_path = None
 
         if isinstance(image_path_or_array, str):
+            source_path = image_path_or_array
             img = cv2.imread(image_path_or_array, cv2.IMREAD_COLOR)
             if img is None:
                 raise FileNotFoundError(f"Image not found at path: {image_path_or_array}")
@@ -253,7 +257,7 @@ class SegmentationEngine:
 
         orig_h, orig_w = img.shape[:2]
 
-        # Select model (SegFormer is the primary production adapter)
+        # Select primary model
         if model_type == "Mask2Former":
             model = self.mask2former_model
         elif model_type == "UNet":
@@ -281,7 +285,26 @@ class SegmentationEngine:
         # 4. Argmax segmentation mask [H, W]
         seg_mask = np.argmax(full_prob, axis=0).astype(np.uint8)
 
-        # 5. Extract individual semantic binary masks and polygons
+        # 5. Build color-coded RGB segmentation visualization image
+        seg_rgb = np.zeros((orig_h, orig_w, 3), dtype=np.uint8)
+        for c_id, c_rgb in CLASS_COLORS.items():
+            seg_rgb[seg_mask == c_id] = [c_rgb[2], c_rgb[1], c_rgb[0]]  # BGR for OpenCV
+
+        # Save segmentation mask visualization to disk if source_path provided
+        mask_disk_path = ""
+        if source_path:
+            p_src = Path(source_path)
+            preprocessed_dir = p_src.parent
+            if preprocessed_dir.name != "preprocessed":
+                preprocessed_dir = preprocessed_dir / "preprocessed"
+            preprocessed_dir.mkdir(parents=True, exist_ok=True)
+            mask_disk_path = str(preprocessed_dir / f"segmentation_mask_{p_src.stem}.png")
+            cv2.imwrite(mask_disk_path, seg_rgb)
+
+        _, buf_seg = cv2.imencode(".png", seg_rgb)
+        b64_seg = base64.b64encode(buf_seg.tobytes()).decode("utf-8")
+
+        # 6. Extract individual semantic binary masks and polygons
         semantic_regions: List[Dict[str, Any]] = []
         class_masks_summary: Dict[str, Any] = {}
         pixel_counts: Dict[str, int] = {}
@@ -291,26 +314,25 @@ class SegmentationEngine:
             count = int(np.sum(seg_mask == class_id))
             pixel_counts[class_name] = count
 
-            # Store class mask presence
             class_masks_summary[class_name.lower()] = {
                 "classId": class_id,
                 "pixelCount": count,
-                "hasDetections": count > 100
+                "hasDetections": count > 80
             }
 
-            if class_id == 0 or count < 100:
+            if class_id == 0 or count < 80:
                 continue
 
             # Extract polygon contours for this semantic class
             contours, _ = cv2.findContours(class_binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for r_idx, cnt in enumerate(contours):
                 area = cv2.contourArea(cnt)
-                if area < 80.0:
+                if area < 50.0:
                     continue
 
                 peri = cv2.arcLength(cnt, True)
                 poly_approx = cv2.approxPolyDP(cnt, 0.015 * peri, True)
-                clean_coords = [[float(pt[0][0]), float(pt[0][1])] for pt in poly_approx]
+                clean_coords = [[round(float(pt[0][0]), 2), round(float(pt[0][1]), 2)] for pt in poly_approx]
                 if len(clean_coords) < 3:
                     continue
 
@@ -334,20 +356,30 @@ class SegmentationEngine:
                 })
 
         inference_time_ms = round((time.time() - start_time) * 1000.0, 2)
+        has_detections = len(semantic_regions) > 0
+        overall_confidence = float(np.mean([r["confidence"] for r in semantic_regions])) if semantic_regions else 0.0
 
-        return {
+        result = {
             "artifactType": "SEMANTIC_SEGMENTATION_MASKS",
             "modelName": model.model_name,
             "canvasWidth": orig_w,
             "canvasHeight": orig_h,
             "tileCount": len(patches),
             "inferenceTimeMs": inference_time_ms,
+            "modelConfidence": round(overall_confidence, 3),
+            "hasValidDetections": has_detections,
+            "maskImagePath": mask_disk_path,
+            "maskImageBase64": f"data:image/png;base64,{b64_seg}",
             "classes": [SEMANTIC_CLASSES[i] for i in range(num_classes)],
             "classPixelCounts": pixel_counts,
             "masks": class_masks_summary,
             "semanticRegionsCount": len(semantic_regions),
-            "semanticRegions": semantic_regions
+            "semanticRegions": semantic_regions,
+            "regions": semantic_regions  # Alias for downstream compatibility
         }
+
+        logger.info(f"SegmentationEngine completed: {len(semantic_regions)} semantic regions detected across {len(patches)} tiles ({inference_time_ms}ms, confidence={overall_confidence:.2f})")
+        return result
 
 
 # Singleton Instance

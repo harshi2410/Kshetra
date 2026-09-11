@@ -1,8 +1,8 @@
 """
-Road & Feature Detection Engine (Phase 5).
+Road & Feature Detection Engine.
 Extracts road corridors, centerlines, widths, intersection nodes, green spaces,
 and natural obstacles using GEOS computational geometry (Shapely + OpenCV).
-Consumes SEMANTIC_SEGMENTATION_MASKS (SegFormer class 2 ROAD, class 4 VEGETATION, class 5 WATER)
+Consumes SEMANTIC_SEGMENTATION_MASKS (SegFormer class 2 ROAD, class 4 GREEN_SPACE, class 5 OPEN_SPACE, class 6 OBSTACLE)
 or UNIVERSAL_PRIMITIVES and GEOMETRY_RELATIONSHIP_GRAPH.
 """
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class RoadDetectionEngine:
     """
-    Road & Feature Detection Engine Singleton (TASK-045 / TASK-055 / Phase 5).
+    Road & Feature Detection Engine Singleton.
     Extracts road network corridors, centerlines, intersections, and green spaces.
     """
 
@@ -33,7 +33,7 @@ class RoadDetectionEngine:
 
         primitives = u_dict.get("universalPrimitives", []) or u_dict.get("primitives", [])
         edges = g_dict.get("edges", [])
-        semantic_regions = s_dict.get("regions", [])
+        semantic_regions = s_dict.get("semanticRegions", []) or s_dict.get("regions", [])
 
         roads: List[Dict[str, Any]] = []
         intersections: List[List[float]] = []
@@ -94,7 +94,7 @@ class RoadDetectionEngine:
                         "source": "SEMANTIC_SEGMENTATION"
                     })
 
-                elif cls_name in ["VEGETATION", "OPEN_SPACE", "GREEN_SPACE"]:
+                elif cls_name in ["GREEN_SPACE", "OPEN_SPACE", "VEGETATION"]:
                     gid = f"green-{len(green_spaces)+1:03d}"
                     clean_verts = [[round(pt[0], 2), round(pt[1], 2)] for pt in list(poly.exterior.coords)]
                     green_spaces.append({
@@ -107,12 +107,12 @@ class RoadDetectionEngine:
                         "wkt": poly.wkt
                     })
 
-                elif cls_name in ["WATER", "OBSTACLE", "EXCLUSION"]:
+                elif cls_name in ["OBSTACLE", "BUILDING", "WATER", "EXCLUSION"]:
                     oid = f"obstacle-{len(obstacles)+1:03d}"
                     clean_verts = [[round(pt[0], 2), round(pt[1], 2)] for pt in list(poly.exterior.coords)]
                     obstacles.append({
                         "id": oid,
-                        "name": f"Exclusion Zone {len(obstacles)+1}",
+                        "name": f"{cls_name.capitalize()} Zone {len(obstacles)+1}",
                         "type": cls_name,
                         "geometry": clean_verts,
                         "polygon": clean_verts,
@@ -148,68 +148,80 @@ class RoadDetectionEngine:
                             [float(bbox_raw[0]), float(bbox_raw[1])]
                         ]
 
+                if not raw_verts or len(raw_verts) < 3:
+                    continue
+
                 geo_info = GeometryEngine.analyze_polygon(raw_verts)
                 bbox = geo_info["boundingBox"]
-                vertices = geo_info["vertices"] if geo_info["isValid"] else raw_verts
-
                 w = abs(bbox[2] - bbox[0])
                 h = abs(bbox[3] - bbox[1])
+                road_w = round(min(w, h), 2)
+                road_l = round(max(w, h), 2)
 
                 if w >= h:
-                    road_width = round(min(h, 60.0), 2)
-                    road_length = round(w, 2)
-                    centerline = [[bbox[0], (bbox[1] + bbox[3]) / 2.0], [bbox[2], (bbox[1] + bbox[3]) / 2.0]]
+                    cline = [[round(bbox[0], 2), round((bbox[1] + bbox[3]) / 2.0, 2)], [round(bbox[2], 2), round((bbox[1] + bbox[3]) / 2.0, 2)]]
                 else:
-                    road_width = round(min(w, 60.0), 2)
-                    road_length = round(h, 2)
-                    centerline = [[(bbox[0] + bbox[2]) / 2.0, bbox[1]], [(bbox[0] + bbox[2]) / 2.0, bbox[3]]]
+                    cline = [[round((bbox[0] + bbox[2]) / 2.0, 2), round(bbox[1], 2)], [round((bbox[0] + bbox[2]) / 2.0, 2), round(bbox[3], 2)]]
 
-                total_length += road_length
-                connected_list = sorted(list(adjacency.get(r_id, set())))
-
-                intersection_nodes = []
-                for c_id in connected_list:
-                    for target_p in road_primitives:
-                        if (target_p.get("id") or target_p.get("primitiveId")) == c_id:
-                            tb = target_p.get("boundingBox", [0.0, 0.0, 0.0, 0.0])
-                            ix = (max(bbox[0], tb[0]) + min(bbox[2], tb[2])) / 2.0
-                            iy = (max(bbox[1], tb[1]) + min(bbox[3], tb[3])) / 2.0
-                            intersection_nodes.append([round(ix, 2), round(iy, 2)])
-                            intersections.append([round(ix, 2), round(iy, 2)])
+                total_length += road_l
+                conns = sorted(list(adjacency.get(r_id, set())))
 
                 roads.append({
                     "roadId": r_id,
-                    "roadName": f"Main Road {r_idx+1}",
-                    "geometry": vertices,
-                    "polygon": vertices,
+                    "roadName": f"Internal Road {r_idx+1}",
+                    "geometry": geo_info["vertices"],
+                    "polygon": geo_info["vertices"],
                     "wkt": geo_info.get("wkt", ""),
                     "geoJson": geo_info.get("geoJson"),
-                    "centerline": centerline,
-                    "width": max(20.0, road_width),
-                    "roadWidth": max(20.0, road_width),
-                    "length": road_length,
-                    "connectedRoads": connected_list,
-                    "intersectionNodes": intersection_nodes,
+                    "centerline": cline,
+                    "width": max(20.0, road_w),
+                    "roadWidth": max(20.0, road_w),
+                    "length": road_l,
+                    "connectedRoads": conns,
+                    "intersectionNodes": [],
                     "confidence": 0.92,
                     "source": "UNIVERSAL_PRIMITIVES"
                 })
 
+        # Calculate Intersections
+        road_lines = []
+        for r in roads:
+            cl = r.get("centerline", [])
+            if len(cl) >= 2:
+                try:
+                    road_lines.append((r["roadId"], LineString(cl)))
+                except Exception:
+                    pass
+
+        for i in range(len(road_lines)):
+            for j in range(i + 1, len(road_lines)):
+                try:
+                    r1_id, l1 = road_lines[i]
+                    r2_id, l2 = road_lines[j]
+                    if l1.intersects(l2):
+                        pt = l1.intersection(l2)
+                        if isinstance(pt, ShapelyPoint):
+                            coord = [round(pt.x, 2), round(pt.y, 2)]
+                            if coord not in intersections:
+                                intersections.append(coord)
+                except Exception:
+                    pass
+
         result = {
             "artifactType": "ROAD_NETWORK",
             "totalRoadsCount": len(roads),
-            "totalIntersectionsCount": len(intersections),
-            "totalRoadLength": round(total_length, 2),
-            "roads": roads,
+            "totalLength": round(total_length, 2),
+            "intersectionsCount": len(intersections),
             "intersections": intersections,
+            "greenSpacesCount": len(green_spaces),
             "greenSpaces": green_spaces,
-            "obstacles": obstacles
+            "obstaclesCount": len(obstacles),
+            "obstacles": obstacles,
+            "roads": roads
         }
 
-        logger.info(f"RoadDetectionEngine completed: {len(roads)} roads, {len(green_spaces)} green spaces, length={total_length:.2f}")
+        logger.info(f"RoadDetectionEngine completed: {len(roads)} roads, {len(green_spaces)} green spaces, {len(obstacles)} obstacles")
         return result
-
-    # Alias for pipeline backward-compatibility
-    detect_road_network = detect_roads
 
 
 road_detection_engine_instance = RoadDetectionEngine()

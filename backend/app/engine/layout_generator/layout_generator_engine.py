@@ -76,6 +76,10 @@ class LayoutVariant:
         return (self.total_plot_area / self.land.total_area_sqft) * 100.0
 
     @property
+    def composite_score(self) -> float:
+        return self.evaluation.get("compositeScore", 0.0)
+
+    @property
     def statistics(self) -> dict:
         total = self.land.total_area_sqft
         avg_plot = self.total_plot_area / max(1, self.total_plots)

@@ -1,23 +1,24 @@
 """
-Boundary Detection Engine (Phase 5).
+Boundary Detection Engine.
 Extracts and validates the true outer project boundary polygon using GEOS computational geometry (Shapely + OpenCV).
-Consumes SEMANTIC_SEGMENTATION_MASKS (SegFormer class 1 LAND_BOUNDARY) or UNIVERSAL_PRIMITIVES.
+Consumes SEMANTIC_SEGMENTATION_MASKS (SegFormer class 1 LAND_BOUNDARY) or UNIVERSAL_PRIMITIVES or Vector Contours.
 Applies Douglas-Peucker contour simplification (epsilon = 0.015 * perimeter) and enforces GEOS topological validity.
+Never fabricates silent rectangular bounding boxes.
 """
 
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
-from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
+from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon, Point as ShapelyPoint, MultiPoint
 from shapely.validation import explain_validity
-from app.engine.geometry_engine import GeometryEngine
+from shapely.ops import unary_union
 
 logger = logging.getLogger(__name__)
 
 
 class BoundaryDetectionEngine:
     """
-    Boundary Detection Engine Singleton (TASK-046 / TASK-055 / Phase 5).
+    Boundary Detection Engine Singleton.
     Extracts authentic non-rectangular land boundary polygons from segmentation masks or vector primitives.
     """
 
@@ -48,6 +49,9 @@ class BoundaryDetectionEngine:
                 simplified = poly
 
             clean_coords = [[round(pt[0], 2), round(pt[1], 2)] for pt in list(simplified.exterior.coords)]
+            if clean_coords and clean_coords[0] != clean_coords[-1]:
+                clean_coords.append(clean_coords[0])
+
             return simplified, clean_coords, simplified.is_valid
         except Exception as e:
             logger.warning(f"Polygon simplification error: {e}")
@@ -63,8 +67,8 @@ class BoundaryDetectionEngine:
         """
         Detects outer project boundary polygon.
         Priority 1: Semantic Segmentation class 'LAND_BOUNDARY' contours.
-        Priority 2: Universal Primitives BOUNDARY_CANDIDATE.
-        Priority 3: Enclosing bounding hull.
+        Priority 2: Universal Primitives BOUNDARY_CANDIDATE or closed outer contour.
+        Priority 3: Enclosing convex/concave hull of drawing features.
         """
         u_dict = universal_primitives_dict or {}
         r_dict = road_network_dict or {}
@@ -74,15 +78,15 @@ class BoundaryDetectionEngine:
         roads = r_dict.get("roads", [])
         boundary_candidates = []
 
-        # 1. Check Segmentation Mask regions if provided
-        semantic_regions = s_dict.get("regions", [])
+        # 1. Check Segmentation Mask regions (accepting both semanticRegions and regions)
+        semantic_regions = s_dict.get("semanticRegions", []) or s_dict.get("regions", [])
         for r in semantic_regions:
             cls_name = r.get("className", "").upper()
-            if cls_name in ["LAND_BOUNDARY", "BOUNDARY", "FOREGROUND"]:
+            if cls_name in ["LAND_BOUNDARY", "BOUNDARY", "FOREGROUND", "PLOT_BOUNDARY"]:
                 poly_pts = r.get("polygon", [])
                 if len(poly_pts) >= 3:
                     poly, clean_verts, is_valid = self.simplify_and_validate_polygon(poly_pts)
-                    if poly and poly.area > 5000.0:
+                    if poly and poly.area > 2000.0:
                         boundary_candidates.append({
                             "id": r.get("regionId") or "seg-boundary-001",
                             "poly": poly,
@@ -100,9 +104,9 @@ class BoundaryDetectionEngine:
             verts = p.get("vertices", [])
             area = float(p.get("area", 0.0))
 
-            if cand_type == "BOUNDARY_CANDIDATE" or (is_closed and area > 50000.0) or len(verts) >= 4:
+            if cand_type == "BOUNDARY_CANDIDATE" or (is_closed and area > 10000.0) or (len(verts) >= 4 and area > 2000.0):
                 poly, clean_verts, is_valid = self.simplify_and_validate_polygon(verts)
-                if poly and poly.area > 5000.0:
+                if poly and poly.area > 2000.0:
                     boundary_candidates.append({
                         "id": p.get("id") or p.get("primitiveId"),
                         "poly": poly,
@@ -113,7 +117,33 @@ class BoundaryDetectionEngine:
                         "source": "UNIVERSAL_PRIMITIVES"
                     })
 
-        # 3. Select Best Candidate (Largest Valid Enclosing Polygon)
+        # 3. Check union/convex hull of all detected drawing primitives if still empty
+        if not boundary_candidates and primitives:
+            all_pts = []
+            for p in primitives:
+                for v in p.get("vertices", []):
+                    if len(v) >= 2:
+                        all_pts.append((float(v[0]), float(v[1])))
+            if len(all_pts) >= 4:
+                try:
+                    mp = MultiPoint(all_pts)
+                    hull = mp.convex_hull
+                    if isinstance(hull, ShapelyPolygon) and hull.area > 2000.0:
+                        poly, clean_verts, is_valid = self.simplify_and_validate_polygon(list(hull.exterior.coords))
+                        if poly and is_valid:
+                            boundary_candidates.append({
+                                "id": "hull-boundary-001",
+                                "poly": poly,
+                                "vertices": clean_verts,
+                                "area": float(poly.area),
+                                "perimeter": float(poly.length),
+                                "bbox": list(poly.bounds),
+                                "source": "CONVEX_HULL_RECONSTRUCTION"
+                            })
+                except Exception as hull_err:
+                    logger.warning(f"Boundary hull extraction note: {hull_err}")
+
+        # 4. Select Best Candidate (Largest Valid Enclosing Polygon)
         if boundary_candidates:
             boundary_candidates.sort(key=lambda x: x["area"], reverse=True)
             best = boundary_candidates[0]
@@ -124,31 +154,37 @@ class BoundaryDetectionEngine:
             bbox = [round(c, 2) for c in best["bbox"]]
             is_valid = True
             poly_obj = best["poly"]
+            confidence = 0.95
+            status_msg = "Land boundary extracted and topologically validated"
         else:
-            boundary_id = "boundary-fallback-001"
-            vertices = [[0.0, 0.0], [1000.0, 0.0], [1000.0, 800.0], [0.0, 800.0], [0.0, 0.0]]
-            area, perimeter = 800000.0, 3600.0
-            bbox = [0.0, 0.0, 1000.0, 800.0]
+            # Explicit failure state without fake geometry
+            boundary_id = "boundary-unresolved"
+            vertices = []
+            area = 0.0
+            perimeter = 0.0
+            bbox = [0.0, 0.0, 0.0, 0.0]
             is_valid = False
-            poly_obj = ShapelyPolygon(vertices)
+            poly_obj = None
+            confidence = 0.0
+            status_msg = "Model confidence low / No valid land boundary polygon detected in input"
 
-        w = abs(bbox[2] - bbox[0])
-        h = abs(bbox[3] - bbox[1])
+        w = abs(bbox[2] - bbox[0]) if bbox else 0.0
+        h = abs(bbox[3] - bbox[1]) if bbox else 0.0
         orientation = "NORTH" if h >= w else "EAST"
-        confidence = 0.96 if is_valid else 0.50
 
-        # Create standard GeoJSON representation
         geo_json = {
             "type": "Feature",
             "geometry": {
                 "type": "Polygon",
-                "coordinates": [vertices]
+                "coordinates": [vertices] if vertices else []
             },
             "properties": {
                 "boundaryId": boundary_id,
                 "areaSqft": round(area, 2),
                 "perimeterFt": round(perimeter, 2),
-                "orientation": orientation
+                "orientation": orientation,
+                "isValid": is_valid,
+                "statusMessage": status_msg
             }
         }
 
@@ -165,10 +201,11 @@ class BoundaryDetectionEngine:
             "orientation": orientation,
             "confidence": confidence,
             "roadsContainedCount": len(roads),
-            "isValidBoundary": is_valid
+            "isValidBoundary": is_valid,
+            "statusMessage": status_msg
         }
 
-        logger.info(f"BoundaryDetectionEngine completed: boundary '{boundary_id}', area={area:.2f}, perimeter={perimeter:.2f}")
+        logger.info(f"BoundaryDetectionEngine: '{boundary_id}', valid={is_valid}, area={area:.2f}, perimeter={perimeter:.2f}")
         return result
 
 

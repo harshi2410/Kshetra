@@ -4,7 +4,7 @@ import { Tag, Compass, Maximize, AlertCircle } from 'lucide-react';
 export function GeometryInspectorPanel({ selectedPlot, selectedRoad, onUpdatePlot, onUpdateRoad }) {
   if (!selectedPlot && !selectedRoad) {
     return (
-      <div className="w-72 bg-slate-900 border-l border-slate-800 p-4 text-slate-400 text-xs flex flex-col items-center justify-center text-center">
+      <div className="w-full md:w-72 bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800 p-4 text-slate-400 text-xs flex flex-col items-center justify-center text-center">
         <Tag size={28} className="mb-2 text-slate-600" />
         <p className="font-semibold text-slate-300">No Object Selected</p>
         <p className="mt-1 text-slate-500">Click on any plot or road in the editor to inspect and edit its geometry attributes.</p>
@@ -14,7 +14,7 @@ export function GeometryInspectorPanel({ selectedPlot, selectedRoad, onUpdatePlo
 
   if (selectedPlot) {
     return (
-      <div className="w-72 bg-slate-900 border-l border-slate-800 p-4 text-white text-xs overflow-y-auto">
+      <div className="w-full md:w-72 bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800 p-4 text-white text-xs overflow-y-auto max-h-60 md:max-h-none">
         <h3 className="text-sm font-bold text-emerald-400 mb-3 border-b border-slate-800 pb-2 flex items-center gap-1.5">
           <Tag size={15} /> Plot Properties
         </h3>
@@ -118,7 +118,7 @@ export function GeometryInspectorPanel({ selectedPlot, selectedRoad, onUpdatePlo
   }
 
   return (
-    <div className="w-72 bg-slate-900 border-l border-slate-800 p-4 text-white text-xs overflow-y-auto">
+    <div className="w-full md:w-72 bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800 p-4 text-white text-xs overflow-y-auto max-h-60 md:max-h-none">
       <h3 className="text-sm font-bold text-blue-400 mb-3 border-b border-slate-800 pb-2">Road Properties</h3>
       <div className="space-y-3">
         <div>

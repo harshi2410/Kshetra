@@ -1,5 +1,5 @@
 """
-PlotSubdivider — Production Computational Geometry Plot Subdivision Engine (Phase 9).
+PlotSubdivider — Production Computational Geometry Plot Subdivision Engine.
 Strict Invariant:
 USABLE LAND = LAND BOUNDARY - SETBACKS - ROADS - AMENITIES - OBSTACLES
 Every plot is generated STRICTLY INSIDE USABLE LAND with direct road frontage.
@@ -103,7 +103,6 @@ class PlotSubdivider:
         Subdivides usable space between roads into legal plots.
         Guarantees strict containment inside usable land boundary via BuildableAreaEngine.
         """
-        # Convert road polygons and amenities for BuildableAreaEngine
         road_polys = [r.polygon for r in road_network.roads]
         amenity_polys = [a.polygon for a in amenities]
 
@@ -112,12 +111,11 @@ class PlotSubdivider:
             setback_ft=setback_ft,
             road_polygons=road_polys,
             green_spaces=amenity_polys,
-            min_block_area_sqft=target_plot_sqft * 0.45
+            min_block_area_sqft=target_plot_sqft * 0.40
         )
 
         blocks = buildable_res.blocks
         if not blocks:
-            # Fallback if setback/roads left very small parcel
             land_poly = land.shapely_polygon
             roads_geom = road_network.shapely_union
             amenities_geom = unary_union([
@@ -139,7 +137,7 @@ class PlotSubdivider:
         target_d = max(min_plot_depth_ft, target_plot_sqft / target_w)
 
         for block in blocks_geoms:
-            if block.is_empty or block.area < (target_plot_sqft * 0.45):
+            if block.is_empty or block.area < (target_plot_sqft * 0.40):
                 continue
 
             min_x, min_y, max_x, max_y = block.bounds
@@ -163,7 +161,7 @@ class PlotSubdivider:
                     # Strict geometric intersection with block
                     plot_geom = cell_box.intersection(block)
 
-                    if plot_geom.is_empty or plot_geom.area < (target_plot_sqft * 0.40):
+                    if plot_geom.is_empty or plot_geom.area < (target_plot_sqft * 0.35):
                         continue
 
                     # Extract primary polygon
@@ -173,7 +171,7 @@ class PlotSubdivider:
                     elif isinstance(plot_geom, MultiPolygon):
                         poly_to_use = max(plot_geom.geoms, key=lambda p: p.area)
 
-                    if not poly_to_use or poly_to_use.area < (target_plot_sqft * 0.40):
+                    if not poly_to_use or poly_to_use.area < (target_plot_sqft * 0.35):
                         continue
 
                     if not poly_to_use.is_valid:
@@ -188,7 +186,7 @@ class PlotSubdivider:
                     p_width = max(1.0, pb_maxx - pb_minx)
                     p_depth = max(1.0, pb_maxy - pb_miny)
 
-                    # Facing logic
+                    # Center & Facing logic
                     cx = (pb_minx + pb_maxx) / 2.0
                     cy = (pb_miny + pb_maxy) / 2.0
                     facing = "EAST" if cx >= (min_x + max_x) / 2.0 else "WEST"
@@ -196,6 +194,18 @@ class PlotSubdivider:
                         facing = "SOUTH"
                     elif r == rows - 1:
                         facing = "NORTH"
+
+                    # Find nearest road name
+                    nearest_road_name = "Internal Avenue"
+                    if road_network.roads:
+                        best_dist = float("inf")
+                        for rd in road_network.roads:
+                            rx = (rd.start.x + rd.end.x) / 2.0
+                            ry = (rd.start.y + rd.end.y) / 2.0
+                            d = math.hypot(cx - rx, cy - ry)
+                            if d < best_dist:
+                                best_dist = d
+                                nearest_road_name = rd.name
 
                     is_corner = (c == 0 or c == cols - 1) and (r == 0 or r == rows - 1)
                     price = poly_to_use.area * base_rate_per_sqft
@@ -208,7 +218,7 @@ class PlotSubdivider:
                         width_ft=p_width,
                         depth_ft=p_depth,
                         facing=facing,
-                        road_name="Internal Avenue",
+                        road_name=nearest_road_name,
                         is_corner=is_corner,
                         status="AVAILABLE",
                         estimated_price=price,

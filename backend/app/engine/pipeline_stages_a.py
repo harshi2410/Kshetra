@@ -129,11 +129,15 @@ class PipelineStagesA:
 
         prep_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "PREPROCESSED_IMAGE")
         prep_dict = json.loads(prep_art.content_json) if prep_art and prep_art.content_json else {}
-        img_path = prep_dict.get("preprocessedFilePath") or layout.file_path
+        img_path = prep_dict.get("normalizedImagePath") or prep_dict.get("processedImagePath") or prep_dict.get("originalFilePath") or layout.file_path
 
         seg_res = segmentation_engine_instance.run_semantic_segmentation(img_path)
         artifact_manager_instance.save_artifact(db, project_id, job_id, "SEMANTIC_SEGMENTATION_MASKS", seg_res)
-        job.result_summary = json.dumps({"message": "Semantic segmentation completed", "model": seg_res.get("modelName")})
+        job.result_summary = json.dumps({
+            "message": "Semantic segmentation completed",
+            "model": seg_res.get("modelName"),
+            "regionsCount": seg_res.get("semanticRegionsCount", 0),
+            "confidence": seg_res.get("modelConfidence", 0.0)
+        })
         db.commit()
         return seg_res
-

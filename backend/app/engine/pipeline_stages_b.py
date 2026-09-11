@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-from app.models.project import LayoutSource, LayoutProcessingJob
+from app.models.project import LayoutSource, LayoutProcessingJob, GeneratedLayoutVariant, Project
 from app.engine.artifact_manager import artifact_manager_instance
 from app.engine.universal_primitive_detector import universal_primitive_detector_instance
 from app.engine.geometry_relationship_graph import geometry_relationship_graph_instance
@@ -23,6 +23,7 @@ from app.engine.buildable_area_engine import buildable_area_engine_instance
 from app.engine.constraint_validation_engine import constraint_validation_engine_instance
 from app.engine.layout_scorer import layout_scorer_instance
 from app.engine.universal_layout_reconstruction_engine import universal_layout_reconstruction_engine_instance
+from app.engine.layout_generator.layout_generator_engine import LayoutGeneratorEngine
 from app.engine.plot_persister import plot_persister_instance
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,15 @@ class PipelineStagesB:
             segmentation_masks_dict=s_dict
         )
         artifact_manager_instance.save_artifact(db, project_id, job_id, "PROJECT_BOUNDARY", b_res)
+
+        if not b_res.get("isValidBoundary"):
+            msg = b_res.get("statusMessage") or "Low confidence: No valid land boundary polygon could be extracted from input"
+            job.status = "FAILED"
+            job.error_message = msg
+            db.commit()
+            logger.error(f"[BOUNDARY FAILURE] {msg} for job {job_id}")
+            raise ValueError(msg)
+
         job.result_summary = json.dumps({"message": "Boundary detection completed", "area": b_res.get("area", 0)})
         db.commit()
         return b_res
@@ -196,6 +206,9 @@ class PipelineStagesB:
         r_dict = json.loads(artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "ROAD_NETWORK").content_json or "{}")
         b_dict = json.loads(artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "PROJECT_BOUNDARY").content_json or "{}")
         p_dict = json.loads(artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "DETECTED_PLOTS").content_json or "{}")
+        ocr_dict = json.loads(artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "OCR_TEXT_ELEMENTS").content_json or "{}")
+        buildable_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "BUILDABLE_AREA")
+        buildable_dict = json.loads(buildable_art.content_json or "{}") if buildable_art else {}
 
         rec_res = universal_layout_reconstruction_engine_instance.reconstruct_universal_layout(l_dict, r_dict, b_dict, p_dict)
         artifact_manager_instance.save_artifact(db, project_id, job_id, "UNIVERSAL_LAYOUT_MODEL", rec_res)
@@ -204,12 +217,14 @@ class PipelineStagesB:
         # 1. Run 12-rule Geometric Constraint Validation
         plots_list = rec_res.get("plots", [])
         roads_list = rec_res.get("roads", [])
+        green_spaces_list = r_dict.get("greenSpaces", [])
         boundary_info = rec_res.get("boundary", {})
 
         val_report = constraint_validation_engine_instance.validate_layout(
             boundary_polygon=boundary_info.get("boundaryPolygon", []),
             plots=plots_list,
             roads=roads_list,
+            green_spaces=green_spaces_list,
             min_plot_sqft=600.0,
             min_frontage_ft=15.0,
             min_road_width_ft=20.0,
@@ -223,16 +238,15 @@ class PipelineStagesB:
             gross_land_area_sqft=boundary_info.get("layoutArea", 0.0),
             plots=plots_list,
             roads=roads_list,
+            green_spaces=green_spaces_list,
             validation_report=val_report_dict,
         )
         scoring_dict = score_breakdown.to_dict()
         artifact_manager_instance.save_artifact(db, project_id, job_id, "LAYOUT_SCORING_REPORT", scoring_dict)
 
         # 3. Generate 4 Multi-Strategy Layout Variants from True Extracted Boundary & Buildable Geometry
+        variants = []
         try:
-            from app.models.project import GeneratedLayoutVariant, Project
-            from app.engine.layout_generator.layout_generator_engine import LayoutGeneratorEngine
-
             project = db.query(Project).filter(Project.id == project_id).first()
             gen_engine = LayoutGeneratorEngine()
 
@@ -240,9 +254,7 @@ class PipelineStagesB:
             target_sqft = getattr(project, "desired_plot_size_sqft", 1200.0) or 1200.0
             road_w = getattr(project, "road_width_ft", 30.0) or 30.0
             garden_p = getattr(project, "garden_percentage", 10.0) or 10.0
-            gross_area = float(boundary_info.get("layoutArea") or 60000.0)
 
-            # Estimate length/breadth from bounding box if not explicitly provided
             bbox = boundary_info.get("boundingBox", [0, 0, 300, 200])
             len_ft = max(float(bbox[2] - bbox[0]), 100.0)
             brd_ft = max(float(bbox[3] - bbox[1]), 100.0)
@@ -278,12 +290,31 @@ class PipelineStagesB:
         except Exception as var_err:
             logger.warning(f"Generative variant persistence notice: {var_err}")
 
+        # Intermediate Geometry Audit Logging
+        ocr_count = len(ocr_dict.get("textElements", [])) if ocr_dict else 0
+        buildable_blocks = buildable_dict.get("totalBlocksCount", 0)
+        candidate_count = len(plots_list)
+        valid_plots_count = len([p for p in plots_list if p.get("area", 0) > 0])
+
+        logger.info(f"==================================================")
+        logger.info(f"LANDOS AI PIPELINE GEOMETRY AUDIT — JOB {job_id}")
+        logger.info(f"  • Detected land polygons: 1 (Valid: {b_dict.get('isValidBoundary', False)})")
+        logger.info(f"  • Detected road polygons: {len(roads_list)}")
+        logger.info(f"  • Detected green areas: {len(green_spaces_list)}")
+        logger.info(f"  • OCR labels: {ocr_count}")
+        logger.info(f"  • Buildable polygons: {buildable_blocks}")
+        logger.info(f"  • Candidate plots: {candidate_count}")
+        logger.info(f"  • Valid plots: {valid_plots_count}")
+        logger.info(f"  • Final layouts generated: {len(variants)}")
+        logger.info(f"==================================================")
+
         # Finalize job
         job.status, job.stage, job.progress_percentage, job.completed_at = "COMPLETED", "PERSISTED", 100, datetime.now(timezone.utc)
         job.result_summary = json.dumps({
             "message": "AI Pipeline completed successfully",
-            "plotsCount": len(plots_list),
+            "plotsCount": valid_plots_count,
             "roadsCount": len(roads_list),
+            "variantsCount": len(variants),
             "overallCompliant": val_report.overall_compliant,
             "compositeScore": scoring_dict.get("compositeScore", 0.0)
         })

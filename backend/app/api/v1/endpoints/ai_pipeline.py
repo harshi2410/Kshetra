@@ -318,6 +318,8 @@ def get_ai_run_result(run_id: str, project_id: Optional[str] = None, db: Session
     proj_id = job.project_id
 
     # Load intermediate artifacts from database
+    prep_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "PREPROCESSED_IMAGE")
+    seg_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "SEMANTIC_SEGMENTATION_MASKS")
     boundary_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "PROJECT_BOUNDARY")
     road_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "ROAD_NETWORK")
     plots_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "DETECTED_PLOTS")
@@ -327,6 +329,8 @@ def get_ai_run_result(run_id: str, project_id: Optional[str] = None, db: Session
     val_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "GEOMETRIC_VALIDATION_REPORT")
     score_art = artifact_manager_instance.get_latest_artifact_by_type(db, run_id, "LAYOUT_SCORING_REPORT")
 
+    prep_data = json.loads(prep_art.content_json) if prep_art and prep_art.content_json else {}
+    seg_data = json.loads(seg_art.content_json) if seg_art and seg_art.content_json else {}
     boundary_data = json.loads(boundary_art.content_json) if boundary_art and boundary_art.content_json else {}
     road_data = json.loads(road_art.content_json) if road_art and road_art.content_json else {}
     plots_data = json.loads(plots_art.content_json) if plots_art and plots_art.content_json else {}
@@ -354,6 +358,7 @@ def get_ai_run_result(run_id: str, project_id: Optional[str] = None, db: Session
             "totalPlots": v.total_plots,
             "totalAreaSqft": v.total_area_sqft,
             "utilizationPercent": v.utilization_percent,
+            "compositeScore": m.get("evaluation", {}).get("compositeScore", 0.0),
             "isSelected": v.is_selected,
             "model": m,
             "svgUrl": f"/api/v1/projects/{proj_id}/variants/{v.id}/svg"
@@ -364,6 +369,22 @@ def get_ai_run_result(run_id: str, project_id: Optional[str] = None, db: Session
         "runId": job.id,
         "status": job.status,
         "stage": job.stage,
+        "preprocessed": {
+            "imagePath": prep_data.get("processedImagePath") or prep_data.get("normalizedImagePath"),
+            "imageBase64": prep_data.get("processedImageBase64"),
+            "width": prep_data.get("processedWidth", 0),
+            "height": prep_data.get("processedHeight", 0),
+            "deskewAngle": prep_data.get("deskewAngleDegrees", 0.0)
+        },
+        "segmentation": {
+            "modelName": seg_data.get("modelName", "SegFormer-B0"),
+            "maskImagePath": seg_data.get("maskImagePath"),
+            "maskImageBase64": seg_data.get("maskImageBase64"),
+            "confidence": seg_data.get("modelConfidence", 0.0),
+            "classes": seg_data.get("classes", []),
+            "classPixelCounts": seg_data.get("classPixelCounts", {}),
+            "regionsCount": seg_data.get("semanticRegionsCount", 0)
+        },
         "land": {
             "boundary": boundary_data.get("geometry", []),
             "areaSqft": boundary_data.get("area", 0.0),
@@ -371,6 +392,7 @@ def get_ai_run_result(run_id: str, project_id: Optional[str] = None, db: Session
             "boundingBox": boundary_data.get("boundingBox", []),
             "orientation": boundary_data.get("orientation", "NORTH"),
             "isValid": boundary_data.get("isValidBoundary", False),
+            "statusMessage": boundary_data.get("statusMessage", "Valid Boundary")
         },
         "features": {
             "roads": road_data.get("roads", []),

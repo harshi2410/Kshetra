@@ -296,6 +296,16 @@
   .mobile-card-compact {
     padding: 14px !important;
   }
+  .kpi-banner-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .kpi-item {
+    border-right: none !important;
+    border-bottom: 1px solid var(--df-border) !important;
+  }
+  .kpi-item:last-child {
+    border-bottom: none !important;
+  }
 }
 
 /* ── Animations ── */

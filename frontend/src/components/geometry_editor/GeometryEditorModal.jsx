@@ -163,7 +163,7 @@ export function GeometryEditorModal({ isOpen, onClose, projectId, layoutId, init
         setViewMode={setViewMode}
       />
 
-      <div className="relative flex-1 flex overflow-hidden">
+      <div className="relative flex-1 flex flex-col md:flex-row overflow-hidden">
         <GeometryValidationOverlay validationResult={clientVal} />
 
         {isReviewOpen && (
@@ -187,7 +187,7 @@ export function GeometryEditorModal({ isOpen, onClose, projectId, layoutId, init
           />
         )}
 
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-h-[300px]">
           {viewMode === 'MAP' ? (
             <MapProvider georef={georef} onGeorefChange={(g) => { setGeoref(g); setGeorefHasChanges(true); }}>
               {renderCanvas()}
