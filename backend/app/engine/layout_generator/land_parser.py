@@ -41,6 +41,10 @@ class BoundingBox:
             "minY": round(self.min_y, 2),
             "maxX": round(self.max_x, 2),
             "maxY": round(self.max_y, 2),
+            "min_x": round(self.min_x, 2),
+            "min_y": round(self.min_y, 2),
+            "max_x": round(self.max_x, 2),
+            "max_y": round(self.max_y, 2),
             "width": round(self.width, 2),
             "height": round(self.height, 2),
         }

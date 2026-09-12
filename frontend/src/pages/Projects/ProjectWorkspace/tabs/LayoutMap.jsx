@@ -8,6 +8,8 @@ import projectService from '../../../../services/projectService';
 import plotService from '../../../../services/plotService';
 import { formatCurrency } from '../../../../utils/formatters';
 import GeometryEditorModal from '../../../../components/geometry_editor/GeometryEditorModal';
+import PlanningNormsSelector from '../components/PlanningNormsSelector';
+import LayoutAlternativesModal from '../components/LayoutAlternativesModal';
 
 const STATUS_STYLE = {
   AVAILABLE: { bg: '#dcfce7', color: '#15803d', border: '#bbf7d0' },
@@ -40,6 +42,11 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [currentLayoutId, setCurrentLayoutId] = useState('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
+  // Maharashtra UDCPR Layout Alternatives Modal & Generator State (13A-13O)
+  const [isAlternativesModalOpen, setIsAlternativesModalOpen] = useState(false);
+  const [failureReasons, setFailureReasons] = useState([]);
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
 
   // AI Pipeline State
   const [activeJob, setActiveJob] = useState(null);
@@ -165,6 +172,33 @@ export default function LayoutMap({ project, onOpenPlot }) {
       alert('Selected design set as primary master layout for inventory and booking!');
     } catch (err) {
       alert(`Failed to set variant: ${err.message}`);
+    }
+  };
+
+  const handleGenerateMaharashtraLayouts = async (params) => {
+    setIsAutoGenerating(true);
+    setFailureReasons([]);
+    try {
+      const res = await projectService.generateLayouts(project.id, params);
+      if (res) {
+        if (res.validOptionsCount === 0 || !res.variants || res.variants.length === 0) {
+          setFailureReasons(res.failureReasons || ['No fully compliant layout could be generated under the selected planning constraints.']);
+          setIsAlternativesModalOpen(true);
+        } else {
+          setVariants(res.variants);
+          const first = res.variants[0];
+          setSelectedVariantId(first.id);
+          const svgRes = await projectService.getVariantSvg(project.id, first.id);
+          const modelRes = await projectService.getVariantModel(project.id, first.id);
+          if (svgRes?.svgContent) setSvgContent(svgRes.svgContent);
+          if (modelRes) setLayoutModel(modelRes);
+          setIsAlternativesModalOpen(true);
+        }
+      }
+    } catch (err) {
+      console.error('Error generating layouts:', err);
+    } finally {
+      setIsAutoGenerating(false);
     }
   };
 
@@ -349,16 +383,23 @@ export default function LayoutMap({ project, onOpenPlot }) {
         </div>
       )}
 
-      {/* Multi-Alternative Design Variants Header Switcher */}
+      {/* Maharashtra UDCPR Planning Norms & Generator Engine (13C, 13D) */}
+      <PlanningNormsSelector
+        project={project}
+        onGenerate={handleGenerateMaharashtraLayouts}
+        isGenerating={isAutoGenerating}
+      />
+
+      {/* Multi-Alternative Design Variants Header Switcher (13J) */}
       {variants.length > 0 && (
         <div style={{
           padding: '10px 14px', background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
           borderRadius: '8px'
         }}>
-          <div className="responsive-stack" style={{ gap: '10px' }}>
+          <div className="responsive-stack" style={{ gap: '10px', alignItems: 'center' }}>
             <div className="horizontal-scroll-tabs" style={{ flex: 1, paddingBottom: '2px' }}>
               <span className="hide-on-mobile" style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--df-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', marginRight: '4px' }}>
-                Alternatives:
+                Generated Options (13J):
               </span>
               {variants.map((v) => {
                 const isCurrent = v.id === selectedVariantId;
@@ -379,7 +420,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                       transition: 'all 0.15s ease'
                     }}
                   >
-                    <span>{v.strategyName}</span>
+                    <span>{v.optionBadge || v.strategyName}</span>
                     <span style={{
                       padding: '1px 5px', borderRadius: '4px', fontSize: '0.65rem',
                       background: isCurrent ? 'rgba(255,255,255,0.25)' : '#ecfdf5',
@@ -397,19 +438,33 @@ export default function LayoutMap({ project, onOpenPlot }) {
               })}
             </div>
 
-            {activeVarObj && !activeVarObj.isSelected && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
-                onClick={() => handleSetAsMaster(activeVarObj.id)}
+                onClick={() => setIsAlternativesModalOpen(true)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
-                  borderRadius: '6px', border: '1px solid #059669', background: '#ecfdf5',
-                  color: '#059669', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                  borderRadius: '6px', border: '1px solid #3b82f6', background: 'rgba(59,130,246,0.1)',
+                  color: '#3b82f6', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
                   whiteSpace: 'nowrap', flexShrink: 0
                 }}
               >
-                <CheckCircle2 style={{ width: '13px', height: '13px' }} /> Set as Master
+                <Sparkles style={{ width: '13px', height: '13px' }} /> View Alternatives & Compare (13J/13N)
               </button>
-            )}
+
+              {activeVarObj && !activeVarObj.isSelected && (
+                <button
+                  onClick={() => handleSetAsMaster(activeVarObj.id)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
+                    borderRadius: '6px', border: '1px solid #059669', background: '#ecfdf5',
+                    color: '#059669', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                    whiteSpace: 'nowrap', flexShrink: 0
+                  }}
+                >
+                  <CheckCircle2 style={{ width: '13px', height: '13px' }} /> Set as Master
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -947,6 +1002,18 @@ export default function LayoutMap({ project, onOpenPlot }) {
           loadData();
           setIsEditorOpen(false);
         }}
+      />
+
+      {/* Maharashtra UDCPR Best 2-3 Alternatives & Comparison Modal (13J, 13M, 13N) */}
+      <LayoutAlternativesModal
+        isOpen={isAlternativesModalOpen}
+        onClose={() => setIsAlternativesModalOpen(false)}
+        variants={variants}
+        activeVariantId={selectedVariantId}
+        onSelectVariant={(varId) => handleVariantSelect(varId)}
+        onSetAsMaster={(varId) => handleSetAsMaster(varId)}
+        failureReasons={failureReasons}
+        validCount={variants.length}
       />
     </div>
   );

@@ -5,6 +5,35 @@ const BASE_PATHS = [
   'http://127.0.0.1:8000/api/v1/projects'
 ];
 
+const BASE_ROOT_PATHS = [
+  'http://localhost:8000/api/v1',
+  'http://127.0.0.1:8000/api/v1'
+];
+
+async function apiFetchRoot(path = '', options = {}) {
+  let lastErr = null;
+  let lastRes = null;
+  for (const basePath of BASE_ROOT_PATHS) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${basePath}${path}`, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return res;
+      }
+      if (!lastRes) lastRes = res;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (lastRes) return lastRes;
+  throw lastErr || new Error('Backend API unreachable');
+}
+
 async function apiFetch(path = '', options = {}) {
   let lastErr = null;
   let lastRes = null;
@@ -633,11 +662,12 @@ export const projectService = {
         const isCorner = c === 0 || c === cols - 1;
         const fill = isCorner ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.15)';
         const stroke = isCorner ? '#f59e0b' : '#10b981';
+        const isFirstInRow = c === 0;
         plots.push(`
           <g class="landos-plot-group" data-plot-id="plot-${idx}">
             <polygon points="${x},${y} ${x + pw},${y} ${x + pw},${y + ph} ${x},${y + ph}" fill="${fill}" stroke="${stroke}" stroke-width="1.2" class="landos-plot" id="plot-poly-${idx}"/>
-            <text x="${x + pw / 2}" y="${y + ph / 2 - 2}" fill="#f8fafc" font-size="8" text-anchor="middle" font-weight="bold">P-${idx.toString().padStart(3, '0')}</text>
-            <text x="${x + pw / 2}" y="${y + ph / 2 + 8}" fill="#94a3b8" font-size="6.5" text-anchor="middle">1200 SQFT</text>
+            <text x="${x + pw / 2}" y="${isFirstInRow ? y + ph / 2 - 2 : y + ph / 2 + 3}" fill="#f8fafc" font-size="${isFirstInRow ? 8 : 8.5}" text-anchor="middle" font-weight="bold">P-${idx.toString().padStart(3, '0')}</text>
+            ${isFirstInRow ? `<text x="${x + pw / 2}" y="${y + ph / 2 + 8}" fill="#94a3b8" font-size="6.2" text-anchor="middle">1200 SQFT</text>` : ''}
           </g>
         `);
       }
@@ -739,6 +769,38 @@ export const projectService = {
       } catch (e) {}
     }
     return { success: true, selectedVariantId: variantId };
+  },
+
+  /**
+   * Get list of supported Maharashtra Planning Authorities & UDCPR regulations
+   * API Endpoint: GET /api/v1/planning-norms/jurisdictions
+   */
+  async getPlanningJurisdictions() {
+    try {
+      const res = await apiFetchRoot('/planning-norms/jurisdictions');
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('getPlanningJurisdictions fallback:', err.message);
+    }
+    return { authorities: [], presets: [] };
+  },
+
+  /**
+   * Dynamically evaluate Maharashtra UDCPR planning norms for parcel
+   * API Endpoint: POST /api/v1/planning-norms/evaluate
+   */
+  async evaluatePlanningNorms(data) {
+    try {
+      const res = await apiFetchRoot('/planning-norms/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('evaluatePlanningNorms fallback:', err.message);
+    }
+    return null;
   },
 
   /**

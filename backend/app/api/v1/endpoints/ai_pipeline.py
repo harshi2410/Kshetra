@@ -114,7 +114,7 @@ def execute_ai_pipeline_job(project_id: str, layout_source_id: str, job_id: str,
                 elif extracted_boundary_verts and len(extracted_boundary_verts) >= 3:
                     poly_verts = extracted_boundary_verts
 
-                variants = engine.generate_all_variants(
+                variants, _ = engine.generate_all_variants(
                     length_ft=length_ft,
                     breadth_ft=breadth_ft,
                     polygon_vertices=poly_verts,

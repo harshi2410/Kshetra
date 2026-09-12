@@ -131,7 +131,7 @@ class ResearchBenchmark:
         """Evaluates generative layout diversity and optimization convergence across all 4 strategies."""
         engine = LayoutGeneratorEngine()
         t0 = time.time()
-        variants = engine.generate_all_variants(
+        variants, _ = engine.generate_all_variants(
             length_ft=length_ft,
             breadth_ft=breadth_ft,
             target_plot_sqft=1200.0,

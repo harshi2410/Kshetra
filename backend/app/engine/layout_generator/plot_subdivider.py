@@ -1,9 +1,9 @@
 """
 PlotSubdivider — Production Computational Geometry Plot Subdivision Engine.
 Strict Invariant:
-USABLE LAND = LAND BOUNDARY - SETBACKS - ROADS - AMENITIES - OBSTACLES
+USABLE LAND = LAND BOUNDARY - SETBACKS - ROADS - AMENITIES - UTILITIES - OBSTACLES
 Every plot is generated STRICTLY INSIDE USABLE LAND with direct road frontage.
-Zero overlap with boundary exterior, road corridors, or amenity zones.
+Zero overlap with boundary exterior, road corridors, or amenity/utility zones.
 """
 
 import math
@@ -21,6 +21,9 @@ from .amenity_placer import AmenityZone
 from app.engine.buildable_area_engine import buildable_area_engine_instance, BuildableAreaResult
 
 logger = logging.getLogger(__name__)
+
+SQFT_TO_SQM = 0.09290304
+FT_TO_M = 0.3048
 
 
 class GeneratedPlot:
@@ -43,8 +46,11 @@ class GeneratedPlot:
         self.plot_number = plot_number
         self.polygon = polygon
         self.area_sqft = float(area_sqft)
+        self.area_sqm = float(area_sqft * SQFT_TO_SQM)
         self.width_ft = float(width_ft)
         self.depth_ft = float(depth_ft)
+        self.width_m = float(width_ft * FT_TO_M)
+        self.depth_m = float(depth_ft * FT_TO_M)
         self.facing = facing
         self.road_name = road_name
         self.is_corner = is_corner
@@ -67,15 +73,24 @@ class GeneratedPlot:
         poly = ShapelyPolygon(coords)
         return poly if poly.is_valid else poly.buffer(0)
 
+    @property
+    def dimensions_display(self) -> str:
+        return f"{self.width_ft:.0f}×{self.depth_ft:.0f} FT ({self.width_m:.1f}×{self.depth_m:.1f} M)"
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "plotId": self.plot_id,
             "plotNumber": self.plot_number,
             "polygon": [p.to_dict() for p in self.polygon],
-            "areaSqft": round(self.area_sqft, 2),
+            "areaSqft": round(self.area_sqft, 1),
+            "areaSqm": round(self.area_sqm, 1),
             "dimensions": f"{self.width_ft:.0f} × {self.depth_ft:.0f} FT",
+            "dimensionsMetric": f"{self.width_m:.1f} × {self.depth_m:.1f} M",
+            "dimensionsDisplay": self.dimensions_display,
             "widthFt": round(self.width_ft, 1),
             "depthFt": round(self.depth_ft, 1),
+            "widthM": round(self.width_m, 1),
+            "depthM": round(self.depth_m, 1),
             "facing": self.facing,
             "roadName": self.road_name,
             "isCorner": self.is_corner,
@@ -93,8 +108,9 @@ class PlotSubdivider:
         road_network: RoadNetwork,
         amenities: List[AmenityZone],
         target_plot_sqft: float = 1200.0,
-        min_plot_width_ft: float = 25.0,
-        max_plot_width_ft: float = 40.0,
+        min_plot_sqft: float = 800.0,
+        min_plot_width_ft: float = 20.0,
+        max_plot_width_ft: float = 45.0,
         min_plot_depth_ft: float = 30.0,
         base_rate_per_sqft: float = 2500.0,
         setback_ft: float = 5.0,
@@ -111,7 +127,7 @@ class PlotSubdivider:
             setback_ft=setback_ft,
             road_polygons=road_polys,
             green_spaces=amenity_polys,
-            min_block_area_sqft=target_plot_sqft * 0.40
+            min_block_area_sqft=min_plot_sqft * 0.80
         )
 
         blocks = buildable_res.blocks
@@ -137,7 +153,7 @@ class PlotSubdivider:
         target_d = max(min_plot_depth_ft, target_plot_sqft / target_w)
 
         for block in blocks_geoms:
-            if block.is_empty or block.area < (target_plot_sqft * 0.40):
+            if block.is_empty or block.area < min_plot_sqft * 0.80:
                 continue
 
             min_x, min_y, max_x, max_y = block.bounds
@@ -158,10 +174,9 @@ class PlotSubdivider:
                     py2 = py1 + step_y
 
                     cell_box = shapely_box(px1, py1, px2, py2)
-                    # Strict geometric intersection with block
                     plot_geom = cell_box.intersection(block)
 
-                    if plot_geom.is_empty or plot_geom.area < (target_plot_sqft * 0.35):
+                    if plot_geom.is_empty or plot_geom.area < (min_plot_sqft * 0.75):
                         continue
 
                     # Extract primary polygon
@@ -171,7 +186,7 @@ class PlotSubdivider:
                     elif isinstance(plot_geom, MultiPolygon):
                         poly_to_use = max(plot_geom.geoms, key=lambda p: p.area)
 
-                    if not poly_to_use or poly_to_use.area < (target_plot_sqft * 0.35):
+                    if not poly_to_use or poly_to_use.area < (min_plot_sqft * 0.75):
                         continue
 
                     if not poly_to_use.is_valid:

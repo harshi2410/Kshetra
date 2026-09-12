@@ -259,7 +259,7 @@ class PipelineStagesB:
             len_ft = max(float(bbox[2] - bbox[0]), 100.0)
             brd_ft = max(float(bbox[3] - bbox[1]), 100.0)
 
-            variants = gen_engine.generate_all_variants(
+            variants, _ = gen_engine.generate_all_variants(
                 length_ft=len_ft,
                 breadth_ft=brd_ft,
                 polygon_vertices=b_poly_verts,

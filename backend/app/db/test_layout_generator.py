@@ -20,7 +20,7 @@ def test_usable_land_and_layout_generation():
     engine = LayoutGeneratorEngine()
 
     # 1. Test rectangular 400x250 ft layout generation
-    variants = engine.generate_all_variants(
+    variants, _ = engine.generate_all_variants(
         length_ft=400.0,
         breadth_ft=250.0,
         target_plot_sqft=1200.0,
@@ -79,7 +79,7 @@ def test_irregular_polygon_boundary():
         [0.0, 150.0]
     ]
 
-    variants = engine.generate_all_variants(
+    variants, _ = engine.generate_all_variants(
         length_ft=350.0,
         breadth_ft=280.0,
         polygon_vertices=irregular_verts,
