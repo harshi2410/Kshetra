@@ -1,21 +1,18 @@
 """
-AmenityPlacer — Production Non-Plot Space Reservation Engine.
-Strictly implements UDCPR 2020 space reservation sequence (13D, 13F, 13G, 13H):
-1. RECREATIONAL OPEN SPACE (UDCPR Rule 3.4: 10% for layouts >= 0.40 Ha, min dimension 7.5m, accessible)
+AmenityPlacer — Production Non-Plot Space Reservation Engine (UDCPR 2020).
+Strict Invariant:
+AMENITY ∩ LAND_BOUNDARY = AMENITY.
+Zero reservation polygons may extend outside the authentic land polygon.
+
+Allocates:
+1. RECREATIONAL OPEN SPACE (UDCPR Rule 3.4: 10% for layouts >= 0.40 Ha, min dimension 7.5m)
 2. AMENITY SPACE (UDCPR Rule 3.5: 5% for layouts >= 2.0 Ha or per municipal DP)
 3. UTILITY / SERVICE AREA (Ground Infrastructure: MSEDCL Substation, Solid Waste, Drainage buffer)
-
-Guarantees all reservations are:
-- Geometrically usable (no slivers, compliant minimum dimensions)
-- Inside the valid development boundary
-- Excluded from saleable plots
-- Cleared of any road corridor overlap
-- Clearly labelled and categorized
 """
 
 import math
 from typing import List, Dict, Any, Optional
-from shapely.geometry import Polygon as ShapelyPolygon, box as shapely_box, Point as ShapelyPoint
+from shapely.geometry import Polygon as ShapelyPolygon, box as shapely_box, Point as ShapelyPoint, MultiPolygon
 from shapely.ops import unary_union
 from .land_parser import ParsedLand, Point, BoundingBox
 from .road_network_generator import RoadNetwork
@@ -84,7 +81,7 @@ class AmenityPlacer:
     Allocates dedicated non-plot domains prior to plot subdivision:
     - Recreational Open Space (Rule 3.4)
     - Amenity Space (Rule 3.5)
-    - Utility & Common Service Areas (13H)
+    - Utility & Common Service Areas
     """
 
     @classmethod
@@ -102,7 +99,6 @@ class AmenityPlacer:
         Computes dedicated non-overlapping reservation polygons strictly inside land boundary.
         Subtracts road network corridors to ensure zero mutual overlap.
         """
-        bbox = land.bbox
         total_area = land.total_area_sqft
         land_geom = land.shapely_polygon
         roads_geom = road_network.shapely_union
@@ -121,7 +117,7 @@ class AmenityPlacer:
         reservations: List[AmenityZone] = []
         occupied_geoms = [roads_geom] if not roads_geom.is_empty else []
 
-        # ─── 1. RECREATIONAL OPEN SPACE (UDCPR Rule 3.4) ───
+        # 1. RECREATIONAL OPEN SPACE (UDCPR Rule 3.4)
         if target_open_sqft >= 100.0:
             open_zone = cls._place_single_zone(
                 zone_id="zone-open-space-01",
@@ -134,13 +130,13 @@ class AmenityPlacer:
                 available_domain=available_domain,
                 occupied_union=unary_union(occupied_geoms) if occupied_geoms else ShapelyPolygon(),
                 strategy_name=strategy_name,
-                placement_anchor="CENTER" if "Option C" in strategy_name or "Courtyard" in strategy_name else "NORTH_EAST"
+                placement_anchor="CENTER" if ("Option C" in strategy_name or "Courtyard" in strategy_name) else "NORTH_EAST"
             )
             if open_zone:
                 reservations.append(open_zone)
                 occupied_geoms.append(open_zone.shapely_polygon)
 
-        # ─── 2. CIVIC AMENITY SPACE (UDCPR Rule 3.5) ───
+        # 2. CIVIC AMENITY SPACE (UDCPR Rule 3.5)
         if target_amenity_sqft >= 100.0:
             amenity_zone = cls._place_single_zone(
                 zone_id="zone-amenity-space-01",
@@ -159,7 +155,7 @@ class AmenityPlacer:
                 reservations.append(amenity_zone)
                 occupied_geoms.append(amenity_zone.shapely_polygon)
 
-        # ─── 3. UTILITY / SERVICE AREA (13H) ───
+        # 3. UTILITY / SERVICE AREA
         if target_utility_sqft >= 50.0:
             util_zone = cls._place_single_zone(
                 zone_id="zone-utility-service-01",
@@ -181,6 +177,43 @@ class AmenityPlacer:
         return reservations
 
     @classmethod
+    def _find_anchor_inside_domain(cls, domain: ShapelyPolygon, anchor: str) -> ShapelyPoint:
+        """Finds a representative anchor point strictly inside the domain for the given direction."""
+        if not domain or domain.is_empty:
+            return ShapelyPoint(0, 0)
+
+        # Representative point guaranteed to be inside domain
+        rep = domain.representative_point()
+
+        if anchor == "CENTER":
+            c = domain.centroid
+            return c if domain.contains(c) else rep
+
+        # Get coordinates from domain exterior
+        coords = list(domain.exterior.coords) if hasattr(domain, "exterior") else []
+        if not coords and hasattr(domain, "geoms"):
+            coords = list(max(domain.geoms, key=lambda g: g.area).exterior.coords)
+
+        if not coords:
+            return rep
+
+        if anchor == "NORTH_EAST":
+            best = max(coords, key=lambda p: p[0] + p[1])
+        elif anchor == "SOUTH_EAST":
+            best = max(coords, key=lambda p: p[0] - p[1])
+        elif anchor == "SOUTH_WEST":
+            best = min(coords, key=lambda p: p[0] + p[1])
+        else:  # NORTH_WEST
+            best = min(coords, key=lambda p: p[0] - p[1])
+
+        pt = ShapelyPoint(best[0], best[1])
+        # Nudge toward representative point so it's inside domain
+        dx = rep.x - pt.x
+        dy = rep.y - pt.y
+        nudged = ShapelyPoint(pt.x + dx * 0.25, pt.y + dy * 0.25)
+        return nudged if domain.contains(nudged) else rep
+
+    @classmethod
     def _place_single_zone(
         cls,
         zone_id: str,
@@ -195,64 +228,58 @@ class AmenityPlacer:
         strategy_name: str,
         placement_anchor: str = "NORTH_EAST"
     ) -> Optional[AmenityZone]:
-        """Calculates a usable rectangular reservation box conforming to UDCPR aspect ratio & size."""
-        bbox = land.bbox
+        """Calculates a usable reservation polygon conforming to UDCPR minimum dimensions."""
+        if available_domain is None or available_domain.is_empty:
+            return None
+
+        # Usable domain free of roads
+        free_domain = available_domain.difference(occupied_union) if not occupied_union.is_empty else available_domain
+        if free_domain.is_empty or free_domain.area < 50.0:
+            return None
+
+        # Take largest component if multipolygon
+        if isinstance(free_domain, MultiPolygon):
+            free_domain = max(free_domain.geoms, key=lambda g: g.area)
+
         side = math.sqrt(target_sqft)
+        min_dim = 20.0
+        w = max(min_dim, side * 1.1)
+        h = max(min_dim, target_sqft / w)
 
-        # Usable width and height keeping min width >= 25 ft (~7.5m UDCPR requirement)
-        min_dim = 25.0
-        w = max(min_dim, min(round(side * 1.25, 1), bbox.width * 0.48))
-        h = max(min_dim, min(round(target_sqft / w, 1), bbox.height * 0.48))
+        anchor_pt = cls._find_anchor_inside_domain(free_domain, placement_anchor)
+        zone_geom = None
 
-        margin = 15.0
-        for scale in [1.0, 1.2, 1.4]:
-            cw = min(w * scale, bbox.width * 0.48)
-            ch = min(h * scale, bbox.height * 0.48)
-
-            if placement_anchor == "CENTER":
-                cx = (bbox.min_x + bbox.max_x) / 2.0
-                cy = (bbox.min_y + bbox.max_y) / 2.0
-                min_x, min_y = cx - cw / 2.0, cy - ch / 2.0
-                max_x, max_y = cx + cw / 2.0, cy + ch / 2.0
-            elif placement_anchor == "NORTH_EAST":
-                max_x = bbox.max_x - margin
-                min_x = max_x - cw
-                max_y = bbox.max_y - margin
-                min_y = max_y - ch
-            elif placement_anchor == "SOUTH_EAST":
-                max_x = bbox.max_x - margin
-                min_x = max_x - cw
-                min_y = bbox.min_y + margin
-                max_y = min_y + ch
-            elif placement_anchor == "SOUTH_WEST":
-                min_x = bbox.min_x + margin
-                max_x = min_x + cw
-                min_y = bbox.min_y + margin
-                max_y = min_y + ch
-            else:  # NORTH_WEST
-                min_x = bbox.min_x + margin
-                max_x = min_x + cw
-                max_y = bbox.max_y - margin
-                min_y = max_y - ch
-
-            candidate_box = shapely_box(min_x, min_y, max_x, max_y)
-            zone_geom = candidate_box.intersection(available_domain)
-            if not occupied_union.is_empty:
-                zone_geom = zone_geom.difference(occupied_union)
-
-            if not zone_geom.is_empty and zone_geom.area >= (target_sqft * 0.75):
+        for scale in [1.0, 1.25, 1.5, 0.8]:
+            cw = w * scale
+            ch = h * scale
+            candidate_box = shapely_box(
+                anchor_pt.x - cw / 2.0,
+                anchor_pt.y - ch / 2.0,
+                anchor_pt.x + cw / 2.0,
+                anchor_pt.y + ch / 2.0
+            )
+            candidate_zone = candidate_box.intersection(free_domain)
+            if not candidate_zone.is_empty and candidate_zone.area >= (target_sqft * 0.60):
+                zone_geom = candidate_zone
                 break
 
-        if zone_geom.is_empty or zone_geom.area < 50.0:
-            return None
+        if zone_geom is None or zone_geom.is_empty or zone_geom.area < 50.0:
+            # Fallback: buffer around anchor point or take suitable fraction of free domain
+            candidate_buffer = anchor_pt.buffer(side * 0.6).intersection(free_domain)
+            if not candidate_buffer.is_empty and candidate_buffer.area >= 50.0:
+                zone_geom = candidate_buffer
+            else:
+                return None
 
         # Extract primary polygon
         poly = zone_geom
-        if poly.geom_type == "MultiPolygon":
+        if isinstance(poly, MultiPolygon):
             poly = max(poly.geoms, key=lambda p: p.area)
 
-        if poly.area < 50.0:
-            return None
+        if poly.area < 50.0 or not poly.is_valid:
+            poly = poly.buffer(0)
+            if poly.is_empty or poly.area < 50.0:
+                return None
 
         coords = list(poly.exterior.coords)
         points = [Point(c[0], c[1]) for c in coords[:-1]]

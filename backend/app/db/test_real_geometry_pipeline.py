@@ -94,9 +94,9 @@ def test_real_geometry_pipeline():
     assert len(buildable_res.blocks) > 0, "Must decompose into buildable blocks"
     print(f"[STAGE 3: BUILDABLE AREA] Gross: {buildable_res.gross_area_sqft:,.1f} SQFT | Net Buildable: {buildable_res.net_buildable_area_sqft:,.1f} SQFT ({buildable_res.buildable_percentage}%) across {len(buildable_res.blocks)} blocks")
 
-    # 4. Test 4 Generative Multi-Strategy Layout Alternatives
+    # 4. Test 3 Generative Multi-Strategy Layout Alternatives (Section 35, 36)
     gen_engine = LayoutGeneratorEngine()
-    variants = gen_engine.generate_all_variants(
+    variants, failure_reasons = gen_engine.generate_all_variants(
         length_ft=500.0,
         breadth_ft=450.0,
         polygon_vertices=clean_verts,
@@ -106,10 +106,16 @@ def test_real_geometry_pipeline():
         setback_ft=10.0
     )
 
-    assert len(variants) == 4, f"Expected 4 layout alternatives, got {len(variants)}"
-    print(f"[STAGE 4: 4 ALTERNATIVES] Successfully generated {len(variants)} scored alternatives:")
+    assert len(variants) >= 2, f"Expected 2-3 layout alternatives, got {len(variants)}, errors: {failure_reasons}"
+    print(f"[STAGE 4: ALTERNATIVES] Successfully generated {len(variants)} scored alternatives:")
+
+    # Verify identical outer boundary across all alternatives (Section 37)
+    base_area = variants[0].land.total_area_sqft
+    base_v_count = len(variants[0].land.boundary_polygon)
 
     for v in variants:
+        assert abs(v.land.total_area_sqft - base_area) < 1.0, "Total land area must be identical across all options"
+        assert len(v.land.boundary_polygon) == base_v_count, "Outer boundary vertices must be identical across all options"
         stats = v.statistics
         print(f"  • Layout #{v.variant_number} ({v.strategy_name}): {v.total_plots} plots | Util: {v.utilization_percent:.1f}% | Score: {v.statistics.get('compositeScore', 0):.1f}/100")
         assert v.total_plots > 0, f"Strategy {v.strategy_name} must produce plots"
@@ -117,7 +123,8 @@ def test_real_geometry_pipeline():
         # Verify all plots are strictly inside the land boundary
         for p in v.plots:
             plot_poly = p.shapely_polygon
-            assert simplified_poly.contains(plot_poly) or simplified_poly.intersects(plot_poly), f"Plot {p.plot_number} must be contained inside land boundary"
+            outside = plot_poly.difference(simplified_poly).area
+            assert outside < 1.0, f"Plot {p.plot_number} must be contained inside land boundary (outside: {outside:.1f} sqft)"
             # Ensure positive area
             assert p.area_sqft >= 400.0, f"Plot {p.plot_number} area must meet threshold"
 

@@ -311,9 +311,9 @@ class LayoutScorer:
         - OPTION 3 — BEST LAND UTILIZATION
         """
         badges = [
-            "OPTION 1 — BEST OVERALL",
+            "OPTION 1 — BEST PLOT EFFICIENCY",
             "OPTION 2 — BEST ACCESS",
-            "OPTION 3 — BEST LAND UTILIZATION"
+            "OPTION 3 — BEST OVERALL"
         ]
 
         # Sort variants by composite score descending
@@ -326,6 +326,8 @@ class LayoutScorer:
             badge = badges[idx] if idx < len(badges) else f"OPTION {idx+1}"
             if hasattr(v, "variant_number"):
                 v.variant_number = idx + 1
+            if hasattr(v, "option_badge"):
+                v.option_badge = badge
             if hasattr(v, "evaluation") and isinstance(v.evaluation, dict):
                 v.evaluation["rank"] = idx + 1
                 v.evaluation["optionBadge"] = badge

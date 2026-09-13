@@ -10,6 +10,7 @@ import { formatCurrency } from '../../../../utils/formatters';
 import GeometryEditorModal from '../../../../components/geometry_editor/GeometryEditorModal';
 import PlanningNormsSelector from '../components/PlanningNormsSelector';
 import LayoutAlternativesModal from '../components/LayoutAlternativesModal';
+import BoundaryConfirmationModal from '../../../../components/boundary_editor/BoundaryConfirmationModal';
 
 const STATUS_STYLE = {
   AVAILABLE: { bg: '#dcfce7', color: '#15803d', border: '#bbf7d0' },
@@ -47,6 +48,11 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const [isAlternativesModalOpen, setIsAlternativesModalOpen] = useState(false);
   const [failureReasons, setFailureReasons] = useState([]);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+
+  // Boundary Lock & Multi-View State (Section 26–39)
+  const [isBoundaryModalOpen, setIsBoundaryModalOpen] = useState(false);
+  const [activeViewMode, setActiveViewMode] = useState('VIEW_2_VECTOR'); // 'VIEW_1_INPUT' | 'VIEW_2_VECTOR' | 'VIEW_3_HYBRID'
+  const [boundaryGeometry, setBoundaryGeometry] = useState(null);
 
   // AI Pipeline State
   const [activeJob, setActiveJob] = useState(null);
@@ -116,6 +122,16 @@ export default function LayoutMap({ project, onOpenPlot }) {
 
       const plotList = await plotService.getPlotsByProject(project.id);
       setPlots(plotList || []);
+
+      // Load confirmed or detected boundary polygon (Section 26-34)
+      try {
+        const bRes = await projectService.detectBoundary(project.id);
+        if (bRes && bRes.polygon && bRes.polygon.length >= 3) {
+          setBoundaryGeometry(bRes);
+        }
+      } catch (e) {
+        console.warn('Could not load project boundary:', e);
+      }
     } catch (err) {
       console.warn('Error loading layout data:', err);
     } finally {
@@ -479,6 +495,44 @@ export default function LayoutMap({ project, onOpenPlot }) {
           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--df-text)' }}>
             Vector Civil Engineering Canvas
           </span>
+
+          {/* Multi-View Switcher (Section 39) */}
+          <div style={{ display: 'inline-flex', background: '#090e17', borderRadius: '6px', padding: '2px', border: '1px solid #1e293b' }}>
+            <button
+              onClick={() => setActiveViewMode('VIEW_1_INPUT')}
+              style={{
+                padding: '3px 8px', borderRadius: '4px', fontSize: '0.69rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_1_INPUT' ? '#2563eb' : 'transparent',
+                color: activeViewMode === 'VIEW_1_INPUT' ? '#ffffff' : '#94a3b8'
+              }}
+              title="View 1: Input Document + Boundary Overlay (Section 39)"
+            >
+              View 1: Boundary
+            </button>
+            <button
+              onClick={() => setActiveViewMode('VIEW_2_VECTOR')}
+              style={{
+                padding: '3px 8px', borderRadius: '4px', fontSize: '0.69rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_2_VECTOR' ? '#2563eb' : 'transparent',
+                color: activeViewMode === 'VIEW_2_VECTOR' ? '#ffffff' : '#94a3b8'
+              }}
+              title="View 2: Clean 2D Vector Plan (Master Boundary Clipped)"
+            >
+              View 2: 2D Vector
+            </button>
+            <button
+              onClick={() => setActiveViewMode('VIEW_3_HYBRID')}
+              style={{
+                padding: '3px 8px', borderRadius: '4px', fontSize: '0.69rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_3_HYBRID' ? '#2563eb' : 'transparent',
+                color: activeViewMode === 'VIEW_3_HYBRID' ? '#ffffff' : '#94a3b8'
+              }}
+              title="View 3: Hybrid Overlay on Input Document"
+            >
+              View 3: Hybrid
+            </button>
+          </div>
+
           {layoutModel?.statistics && (
             <span style={{
               fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px',
@@ -558,6 +612,17 @@ export default function LayoutMap({ project, onOpenPlot }) {
           </div>
 
           <button
+            onClick={() => setIsBoundaryModalOpen(true)}
+            title="Inspect, edit, and lock authentic land boundary geometry (Section 26–34)"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px',
+              borderRadius: '4px', border: '1px solid #3b82f6', background: 'rgba(59, 130, 246, 0.15)',
+              cursor: 'pointer', fontSize: '0.72rem', fontWeight: 800, color: '#60a5fa'
+            }}
+          >
+            <ShieldCheck style={{ width: '13px', height: '13px' }} /> Boundary Lock
+          </button>
+          <button
             onClick={() => setIsEditorOpen(true)}
             title="Open CAD Geometry Editor"
             style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '4px', border: '1px solid #3b82f6', background: '#2563eb', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: '#ffffff', boxShadow: '0 2px 4px rgba(37,99,235,0.3)' }}
@@ -601,21 +666,87 @@ export default function LayoutMap({ project, onOpenPlot }) {
           touchAction: 'none'
         }}
       >
-        {svgContent ? (
-          <div
-            style={{
-              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-              transformOrigin: 'center center',
-              transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              userSelect: 'none'
-            }}
-            dangerouslySetInnerHTML={{ __html: svgContent }}
-          />
+        {svgContent || boundaryGeometry?.polygon ? (
+          activeViewMode === 'VIEW_1_INPUT' ? (
+            <div
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative'
+              }}
+            >
+              {(project?.blueprintUrl || project?.layoutSource?.fileUrl) && (
+                <img
+                  src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
+                  alt="Input Document Underlay"
+                  style={{ maxWidth: '85%', maxHeight: '85%', objectFit: 'contain', opacity: 0.65 }}
+                />
+              )}
+              {boundaryGeometry?.polygon && (
+                <svg
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+                  viewBox="0 0 1000 750"
+                >
+                  <polygon
+                    points={boundaryGeometry.polygon.map(p => `${p[0]},${p[1]}`).join(' ')}
+                    fill="rgba(37, 99, 235, 0.18)"
+                    stroke="#2563eb"
+                    strokeWidth="4"
+                  />
+                  {boundaryGeometry.polygon.map((p, i) => (
+                    <circle key={i} cx={p[0]} cy={p[1]} r="6" fill="#38bdf8" stroke="#ffffff" strokeWidth="2" />
+                  ))}
+                </svg>
+              )}
+            </div>
+          ) : activeViewMode === 'VIEW_3_HYBRID' ? (
+            <div
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative'
+              }}
+            >
+              {(project?.blueprintUrl || project?.layoutSource?.fileUrl) && (
+                <img
+                  src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
+                  alt="Input Document Underlay"
+                  style={{ position: 'absolute', maxWidth: '85%', maxHeight: '85%', objectFit: 'contain', opacity: 0.35 }}
+                />
+              )}
+              <div
+                style={{ width: '100%', height: '100%', opacity: 0.90, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                dangerouslySetInnerHTML={{ __html: svgContent }}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                userSelect: 'none'
+              }}
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+          )
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--df-text-muted)', padding: '24px', textAlign: 'center' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📐</div>
@@ -1014,6 +1145,19 @@ export default function LayoutMap({ project, onOpenPlot }) {
         onSetAsMaster={(varId) => handleSetAsMaster(varId)}
         failureReasons={failureReasons}
         validCount={variants.length}
+      />
+
+      {/* Boundary Confirmation & Lock Modal (Section 26–34) */}
+      <BoundaryConfirmationModal
+        isOpen={isBoundaryModalOpen}
+        onClose={() => setIsBoundaryModalOpen(false)}
+        projectId={project.id}
+        initialPolygon={boundaryGeometry?.polygon || null}
+        imageUrl={project?.blueprintUrl || project?.layoutSource?.fileUrl || null}
+        onBoundaryConfirmed={(confirmedData) => {
+          setBoundaryGeometry(confirmedData);
+          loadData();
+        }}
       />
     </div>
   );

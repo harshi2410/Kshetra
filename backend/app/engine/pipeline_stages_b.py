@@ -83,25 +83,79 @@ class PipelineStagesB:
 
     def run_boundary_detection_stage(self, db: Session, project_id: str, layout_id: str, job_id: str) -> Dict[str, Any]:
         job = db.query(LayoutProcessingJob).filter(LayoutProcessingJob.id == job_id).first()
+        layout = db.query(LayoutSource).filter(LayoutSource.id == layout_id).first()
+        project = db.query(Project).filter(Project.id == project_id).first()
         job.status, job.stage, job.progress_percentage = "PROCESSING", "BOUNDARY_DETECTION", 48
         db.commit()
 
-        u_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "UNIVERSAL_PRIMITIVES")
-        g_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "GEOMETRY_RELATIONSHIP_GRAPH")
-        r_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "ROAD_NETWORK")
-        s_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "SEMANTIC_SEGMENTATION_MASKS")
+        b_res = None
 
-        u_dict = json.loads(u_art.content_json or "{}") if u_art else {}
-        g_dict = json.loads(g_art.content_json or "{}") if g_art else {}
-        r_dict = json.loads(r_art.content_json or "{}") if r_art else {}
-        s_dict = json.loads(s_art.content_json or "{}") if s_art else {}
+        # PRIORITY 1: Direct authentic perception from uploaded layout blueprint/image file on disk (Section 26-33)
+        if layout and layout.file_path:
+            try:
+                file_det = boundary_detection_engine_instance.detect_from_file(layout.file_path)
+                if file_det and file_det.get("isValid") and file_det.get("polygon") and len(file_det["polygon"]) >= 3:
+                    poly_verts = file_det["polygon"]
+                    area = file_det.get("area", 0.0)
+                    peri = file_det.get("perimeter", 0.0)
+                    shape_type = file_det.get("shapeType", "IRREGULAR")
 
-        b_res = boundary_detection_engine_instance.detect_project_boundary(
-            universal_primitives_dict=u_dict,
-            geometry_graph_dict=g_dict,
-            road_network_dict=r_dict,
-            segmentation_masks_dict=s_dict
-        )
+                    b_res = {
+                        "artifactType": "PROJECT_BOUNDARY",
+                        "boundaryId": "detected-authentic-boundary",
+                        "geometry": poly_verts,
+                        "polygon": poly_verts,
+                        "area": round(area, 2),
+                        "perimeter": round(peri, 2),
+                        "shapeType": shape_type,
+                        "confidence": file_det.get("confidence", 0.95),
+                        "isValidBoundary": True,
+                        "statusMessage": f"Authentic {shape_type} land boundary detected from uploaded image.",
+                        "inputCategory": file_det.get("inputCategory", "UNKNOWN")
+                    }
+
+                    # Automatically lock into project so layout generator immediately adheres to it!
+                    if project:
+                        project.land_polygon_json = json.dumps(poly_verts)
+                        xs = [p[0] for p in poly_verts]
+                        ys = [p[1] for p in poly_verts]
+                        project.land_length_ft = round(max(xs) - min(xs), 1)
+                        project.land_breadth_ft = round(max(ys) - min(ys), 1)
+                        db.commit()
+                        logger.info(f"[STAGE 4 BOUNDARY] Auto-locked authentic {shape_type} polygon for project {project_id}")
+            except Exception as file_err:
+                logger.warning(f"File boundary perception note: {file_err}")
+
+        # PRIORITY 2: Fallback to primitives / segmentation masks if direct file detection didn't succeed
+        if not b_res or not b_res.get("isValidBoundary"):
+            u_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "UNIVERSAL_PRIMITIVES")
+            g_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "GEOMETRY_RELATIONSHIP_GRAPH")
+            r_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "ROAD_NETWORK")
+            s_art = artifact_manager_instance.get_latest_artifact_by_type(db, job_id, "SEMANTIC_SEGMENTATION_MASKS")
+
+            u_dict = json.loads(u_art.content_json or "{}") if u_art else {}
+            g_dict = json.loads(g_art.content_json or "{}") if g_art else {}
+            r_dict = json.loads(r_art.content_json or "{}") if r_art else {}
+            s_dict = json.loads(s_art.content_json or "{}") if s_art else {}
+
+            b_res = boundary_detection_engine_instance.detect_project_boundary(
+                universal_primitives_dict=u_dict,
+                geometry_graph_dict=g_dict,
+                road_network_dict=r_dict,
+                segmentation_masks_dict=s_dict
+            )
+
+            # If fallback boundary was detected and valid, also save to project
+            if b_res and b_res.get("isValidBoundary") and project and not project.land_polygon_json:
+                poly_verts = b_res.get("polygon") or b_res.get("geometry")
+                if poly_verts and len(poly_verts) >= 3:
+                    project.land_polygon_json = json.dumps(poly_verts)
+                    xs = [p[0] for p in poly_verts]
+                    ys = [p[1] for p in poly_verts]
+                    project.land_length_ft = round(max(xs) - min(xs), 1)
+                    project.land_breadth_ft = round(max(ys) - min(ys), 1)
+                    db.commit()
+
         artifact_manager_instance.save_artifact(db, project_id, job_id, "PROJECT_BOUNDARY", b_res)
 
         if not b_res.get("isValidBoundary"):

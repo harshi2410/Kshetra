@@ -365,9 +365,20 @@ def render_clean_svg(
         f'style="background: #090e17; font-family: Inter, system-ui, -apple-system, sans-serif;">'
     )
 
+    # 0. Boundary polygon coordinates
+    b_pts = []
+    for p in boundary_polygon:
+        px = p["x"] if isinstance(p, dict) else p.x
+        py = p["y"] if isinstance(p, dict) else p.y
+        b_pts.append(f"{px:.1f},{py:.1f}")
+    b_pts_str = " ".join(b_pts)
+
     # Defs
-    svg_parts.append("""
+    svg_parts.append(f"""
     <defs>
+      <clipPath id="boundary-silhouette-clip">
+        <polygon points="{b_pts_str}" />
+      </clipPath>
       <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
         <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.025)" stroke-width="1"/>
       </pattern>
@@ -381,13 +392,13 @@ def render_clean_svg(
         <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(245, 158, 11, 0.4)" stroke-width="1.5" />
       </pattern>
       <style>
-        text {
+        text {{
           font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           user-select: none;
           text-rendering: geometricPrecision;
           -webkit-font-smoothing: antialiased;
-        }
-        .plot-num {
+        }}
+        .plot-num {{
           font-weight: 800;
           fill: #ffffff;
           letter-spacing: 0.3px;
@@ -395,41 +406,36 @@ def render_clean_svg(
           stroke: rgba(9, 14, 23, 0.85);
           stroke-width: 0.6px;
           stroke-linejoin: round;
-        }
-        .plot-dim {
+        }}
+        .plot-dim {{
           font-weight: 600;
           fill: #94a3b8;
           letter-spacing: 0.2px;
-        }
-        .landos-plot {
+        }}
+        .landos-plot {{
           transition: fill 0.15s ease, stroke 0.15s ease, stroke-width 0.15s ease;
           cursor: pointer;
-        }
-        .landos-plot:hover {
+        }}
+        .landos-plot:hover {{
           fill: rgba(59, 130, 246, 0.35) !important;
           stroke: #60a5fa !important;
           stroke-width: 1.8 !important;
-        }
-        .landos-plot-group:hover text.plot-num {
+        }}
+        .landos-plot-group:hover text.plot-num {{
           fill: #38bdf8 !important;
           stroke: none;
-        }
+        }}
       </style>
     </defs>
+    <!-- Neutral workspace background -->
     <rect width="100%" height="100%" fill="url(#grid)" />
-    """)
 
-    # 1. Outer boundary
-    b_pts = []
-    for p in boundary_polygon:
-        px = p["x"] if isinstance(p, dict) else p.x
-        py = p["y"] if isinstance(p, dict) else p.y
-        b_pts.append(f"{px:.1f},{py:.1f}")
-    b_pts_str = " ".join(b_pts)
-    svg_parts.append(
-        f'<polygon points="{b_pts_str}" fill="rgba(15, 23, 42, 0.7)" '
-        f'stroke="#3b82f6" stroke-width="2.2" stroke-dasharray="8,4"/>'
-    )
+    <!-- 1. Authentic Land Silhouette Fill -->
+    <polygon points="{b_pts_str}" fill="#0b1120" />
+
+    <!-- 2. Internal Plotting Elements Strictly Clipped Inside Authentic Boundary -->
+    <g clip-path="url(#boundary-silhouette-clip)">
+    """)
 
     # 2. Dedicated Reservations (Open Space, Amenities, Utility)
     for a in amenities:
@@ -659,6 +665,17 @@ def render_clean_svg(
         plot_svg.append('</g>')
         svg_parts.append("\n".join(plot_svg))
 
+    # Close internal elements clip-path group
+    svg_parts.append("</g>")
+
+    # 4. Master Outer Boundary Styling & Cadastral Vertices (Section 32, 38)
+    svg_parts.append(f'<polygon points="{b_pts_str}" fill="none" stroke="#2563eb" stroke-width="2.6" />')
+    svg_parts.append(f'<polygon points="{b_pts_str}" fill="none" stroke="#93c5fd" stroke-width="1.0" stroke-dasharray="6,3" />')
+    for p in boundary_polygon:
+        px = float(p["x"] if isinstance(p, dict) else p.x)
+        py = float(p["y"] if isinstance(p, dict) else p.y)
+        svg_parts.append(f'<circle cx="{px:.1f}" cy="{py:.1f}" r="2.8" fill="#3b82f6" stroke="#ffffff" stroke-width="1.2" />')
+
     # 5. Entry / Exit Markers (External non-colliding badge)
     for ep in entry_points:
         ep_x = float(ep["x"] if isinstance(ep, dict) else ep.x)
@@ -840,25 +857,25 @@ class LayoutGeneratorEngine:
             )
             return [], failure_reasons
 
-        # ─── 4. MULTIPLE CANDIDATE STRATEGIES (13A) ───
-        # 3 Genuinely distinct strategies
+        # ─── 4. MULTIPLE CANDIDATE STRATEGIES (13A, 35, 36) ───
+        # 3 Genuinely distinct strategies with identical outer boundary
         candidate_strategies = [
             (
-                "Option A: Maximum Practical Plots & Yield",
-                "OPTION 1 — BEST OVERALL",
-                "grid",
+                "Option 1: Maximum Practical Plot Efficiency",
+                "OPTION 1 — BEST PLOT EFFICIENCY",
+                "efficiency",
                 RoadNetworkGenerator.generate_orthogonal_grid
             ),
             (
-                "Option B: Enhanced Circulation & Regularity",
+                "Option 2: Best Accessibility & Circulation",
                 "OPTION 2 — BEST ACCESS",
                 "loop",
                 RoadNetworkGenerator.generate_arterial_loop
             ),
             (
-                "Option C: Central Open Space & Balanced Community",
-                "OPTION 3 — BEST LAND UTILIZATION",
-                "courtyard",
+                "Option 3: Best Overall Development Quality",
+                "OPTION 3 — BEST OVERALL",
+                "quality",
                 RoadNetworkGenerator.generate_central_courtyard
             ),
         ]
@@ -938,7 +955,22 @@ class LayoutGeneratorEngine:
             except Exception as e:
                 logger.warning(f"Error evaluating candidate strategy '{strat_name}': {e}")
 
-        # ─── 7. BEST 2–3 LAYOUT RANKING & PROFILING (13J, 13L, 13M) ───
+        # ─── 7. FINAL SHAPE SIMILARITY CHECK (Section 47) ───
+        # Output outer boundary must strictly match confirmed input polygon
+        shape_verified_variants: List[LayoutVariant] = []
+        for v in valid_variants:
+            area_diff = abs(v.land.total_area_sqft - land.total_area_sqft)
+            if area_diff > 2.0:
+                logger.warning(f"Strategy '{v.strategy_name}' outer boundary area mismatch ({area_diff:.1f} sqft diff). Pruning.")
+                continue
+            if len(v.land.boundary_polygon) != len(land.boundary_polygon):
+                logger.warning(f"Strategy '{v.strategy_name}' outer boundary vertex count mismatch. Pruning.")
+                continue
+            shape_verified_variants.append(v)
+
+        valid_variants = shape_verified_variants
+
+        # ─── 8. BEST 2–3 LAYOUT RANKING & PROFILING (13J, 13L, 13M, 35, 49) ───
         if not valid_variants:
             failure_reasons.append(
                 f"No fully compliant layout could be generated under the selected planning constraints "
@@ -947,9 +979,9 @@ class LayoutGeneratorEngine:
             )
             return [], failure_reasons
 
-        # Rank and assign badges: Option 1 Best Overall, Option 2 Best Access, Option 3 Best Land Utilization
+        # Rank and assign badges: Option 1 Best Plot Efficiency, Option 2 Best Access, Option 3 Best Overall
         valid_variants = layout_scorer_instance.rank_and_profile_variants(valid_variants, land.total_area_sqft)
 
-        # Return up to the best 3 valid layouts (13A, 13L)
+        # Return up to the best 3 valid layouts with identical outer boundary (Section 35, 37)
         best_variants = valid_variants[:3]
         return best_variants, []

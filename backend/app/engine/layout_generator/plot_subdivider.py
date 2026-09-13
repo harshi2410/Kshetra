@@ -1,9 +1,11 @@
 """
-PlotSubdivider — Production Computational Geometry Plot Subdivision Engine.
-Strict Invariant:
-USABLE LAND = LAND BOUNDARY - SETBACKS - ROADS - AMENITIES - UTILITIES - OBSTACLES
-Every plot is generated STRICTLY INSIDE USABLE LAND with direct road frontage.
-Zero overlap with boundary exterior, road corridors, or amenity/utility zones.
+PlotSubdivider — Production Computational Geometry Plot Subdivision Engine (Sections 30, 45, 46).
+Strict Invariants:
+1. PLOT ∩ LAND_BOUNDARY = PLOT (Zero plot overlap with boundary exterior)
+2. PLOT ∩ ROAD = ∅ (Zero road overlap)
+3. PLOT ∩ GREEN_SPACE = ∅ (Zero open space overlap)
+4. PLOT_i ∩ PLOT_j = ∅ (Zero plot-to-plot overlap)
+5. Practical, buildable, edge-aware geometry (Slivers and impossible shapes rejected)
 """
 
 import math
@@ -100,7 +102,7 @@ class GeneratedPlot:
 
 
 class PlotSubdivider:
-    """Subdivides residual land blocks into clean, road-facing plots."""
+    """Subdivides residual land blocks into clean, road-facing, edge-aware plots."""
 
     @staticmethod
     def subdivide(
@@ -117,22 +119,23 @@ class PlotSubdivider:
     ) -> List[GeneratedPlot]:
         """
         Subdivides usable space between roads into legal plots.
-        Guarantees strict containment inside usable land boundary via BuildableAreaEngine.
+        Guarantees strict containment inside usable land boundary via BuildableAreaEngine and Shapely.
+        Enforces Section 30 (Geometric Clipping) and Section 46 (Edge-Aware Plot Generation).
         """
         road_polys = [r.polygon for r in road_network.roads]
         amenity_polys = [a.polygon for a in amenities]
+        land_poly = land.shapely_polygon
 
         buildable_res: BuildableAreaResult = buildable_area_engine_instance.compute_buildable_area(
             boundary_vertices=land.boundary_polygon,
             setback_ft=setback_ft,
             road_polygons=road_polys,
             green_spaces=amenity_polys,
-            min_block_area_sqft=min_plot_sqft * 0.80
+            min_block_area_sqft=min_plot_sqft * 0.70
         )
 
         blocks = buildable_res.blocks
         if not blocks:
-            land_poly = land.shapely_polygon
             roads_geom = road_network.shapely_union
             amenities_geom = unary_union([
                 ShapelyPolygon([(p.x, p.y) for p in a.polygon]) for a in amenities if len(a.polygon) >= 3
@@ -148,12 +151,12 @@ class PlotSubdivider:
         plots: List[GeneratedPlot] = []
         plot_seq = 1
 
-        # Calculate standard target dimensions
+        # Standard target dimensions
         target_w = max(min_plot_width_ft, min(max_plot_width_ft, math.sqrt(target_plot_sqft * 0.75)))
         target_d = max(min_plot_depth_ft, target_plot_sqft / target_w)
 
         for block in blocks_geoms:
-            if block.is_empty or block.area < min_plot_sqft * 0.80:
+            if block.is_empty or block.area < min_plot_sqft * 0.70:
                 continue
 
             min_x, min_y, max_x, max_y = block.bounds
@@ -174,9 +177,15 @@ class PlotSubdivider:
                     py2 = py1 + step_y
 
                     cell_box = shapely_box(px1, py1, px2, py2)
+                    # Intersect cell with block (which is already inside land polygon)
                     plot_geom = cell_box.intersection(block)
 
-                    if plot_geom.is_empty or plot_geom.area < (min_plot_sqft * 0.75):
+                    if plot_geom.is_empty or plot_geom.area < (min_plot_sqft * 0.70):
+                        continue
+
+                    # Strict clipping to authentic land polygon (Section 30)
+                    plot_geom = plot_geom.intersection(land_poly)
+                    if plot_geom.is_empty or plot_geom.area < (min_plot_sqft * 0.70):
                         continue
 
                     # Extract primary polygon
@@ -186,20 +195,27 @@ class PlotSubdivider:
                     elif isinstance(plot_geom, MultiPolygon):
                         poly_to_use = max(plot_geom.geoms, key=lambda p: p.area)
 
-                    if not poly_to_use or poly_to_use.area < (min_plot_sqft * 0.75):
+                    if not poly_to_use or poly_to_use.area < (min_plot_sqft * 0.70):
                         continue
 
                     if not poly_to_use.is_valid:
                         poly_to_use = poly_to_use.buffer(0)
 
+                    pb_minx, pb_miny, pb_maxx, pb_maxy = poly_to_use.bounds
+                    p_width = max(1.0, pb_maxx - pb_minx)
+                    p_depth = max(1.0, pb_maxy - pb_miny)
+
+                    # Practicality filter (Section 46): reject acute slivers
+                    if p_width < (min_plot_width_ft * 0.60) or p_depth < (min_plot_depth_ft * 0.60):
+                        continue
+                    aspect = p_width / p_depth
+                    if aspect < 0.18 or aspect > 5.5:
+                        continue
+
                     coords = list(poly_to_use.exterior.coords)
                     poly_points = [Point(pt[0], pt[1]) for pt in coords[:-1]]
                     if len(poly_points) < 3:
                         continue
-
-                    pb_minx, pb_miny, pb_maxx, pb_maxy = poly_to_use.bounds
-                    p_width = max(1.0, pb_maxx - pb_minx)
-                    p_depth = max(1.0, pb_maxy - pb_miny)
 
                     # Center & Facing logic
                     cx = (pb_minx + pb_maxx) / 2.0

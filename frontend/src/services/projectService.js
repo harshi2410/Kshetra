@@ -824,6 +824,41 @@ export const projectService = {
   },
 
   /**
+   * Auto-detect authentic land boundary from uploaded drawing/image/satellite
+   * API Endpoint: POST /api/v1/projects/:projectId/detect-boundary
+   */
+  async detectBoundary(projectId) {
+    try {
+      const res = await apiFetch(`/${projectId}/detect-boundary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('detectBoundary error:', err.message);
+    }
+    return null;
+  },
+
+  /**
+   * Confirm and lock the authentic land boundary as the master geometric constraint
+   * API Endpoint: POST /api/v1/projects/:projectId/confirm-boundary
+   */
+  async confirmBoundary(projectId, data) {
+    try {
+      const res = await apiFetch(`/${projectId}/confirm-boundary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('confirmBoundary error:', err.message);
+    }
+    return null;
+  },
+
+  /**
    * Trigger async 12-stage AI Land Understanding & Layout Generation Pipeline
    * API Endpoint: POST /api/v1/projects/:projectId/ai-runs
    */
