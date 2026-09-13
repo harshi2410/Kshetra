@@ -10,10 +10,11 @@ app = FastAPI(
     description="LandOS Real Estate Operating System API Backend"
 )
 
-# Set up CORS middleware
+# Set up CORS middleware to allow all development origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

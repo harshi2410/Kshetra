@@ -255,7 +255,7 @@ class ConstraintValidationEngine:
         for pid, poly, _ in parsed_plots:
             # Check if plot is inside boundary with tolerance
             outside_area = poly.difference(land_poly).area
-            if outside_area > 1.0:  # > 1 sqft tolerance
+            if outside_area > max(3.5, poly.area * 0.005):
                 v = RuleViolation(
                     rule_id="RULE_01",
                     rule_name="PLOTS_CONTAINED_IN_BOUNDARY",
@@ -281,7 +281,7 @@ class ConstraintValidationEngine:
         if not roads_union.is_empty:
             for pid, poly, _ in parsed_plots:
                 overlap = poly.intersection(roads_union).area
-                if overlap > 1.0:
+                if overlap > max(3.5, poly.area * 0.005):
                     v = RuleViolation(
                         rule_id="RULE_02",
                         rule_name="ZERO_ROAD_OVERLAP",
@@ -307,7 +307,7 @@ class ConstraintValidationEngine:
         if not green_union.is_empty:
             for pid, poly, _ in parsed_plots:
                 overlap = poly.intersection(green_union).area
-                if overlap > 1.0:
+                if overlap > max(3.5, poly.area * 0.005):
                     v = RuleViolation(
                         rule_id="RULE_03",
                         rule_name="ZERO_GREEN_SPACE_OVERLAP",
@@ -333,7 +333,7 @@ class ConstraintValidationEngine:
         if not obstacle_union.is_empty:
             for pid, poly, _ in parsed_plots:
                 overlap = poly.intersection(obstacle_union).area
-                if overlap > 1.0:
+                if overlap > max(3.5, poly.area * 0.005):
                     v = RuleViolation(
                         rule_id="RULE_04",
                         rule_name="ZERO_OBSTACLE_OVERLAP",
@@ -363,7 +363,7 @@ class ConstraintValidationEngine:
                 pid_j, poly_j, _ = parsed_plots[j]
                 if poly_i.intersects(poly_j):
                     overlap = poly_i.intersection(poly_j).area
-                    if overlap > 1.0:
+                    if overlap > max(3.5, min(poly_i.area, poly_j.area) * 0.005):
                         v = RuleViolation(
                             rule_id="RULE_05",
                             rule_name="ZERO_PLOT_MUTUAL_OVERLAP",

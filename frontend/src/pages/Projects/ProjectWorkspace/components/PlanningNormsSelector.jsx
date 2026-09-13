@@ -11,7 +11,11 @@ import {
   Home, 
   Compass, 
   Zap,
-  Info
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Settings2,
+  Sliders
 } from 'lucide-react';
 import { projectService } from '../../../../services/projectService';
 
@@ -31,6 +35,7 @@ export default function PlanningNormsSelector({
   const [isCongested, setIsCongested] = useState(false);
   const [evaluatedNorms, setEvaluatedNorms] = useState(null);
   const [loadingNorms, setLoadingNorms] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Load Maharashtra Authorities from backend
   useEffect(() => {
@@ -106,268 +111,342 @@ export default function PlanningNormsSelector({
     }
   };
 
-  const isUnknownJurisdiction = !selectedJurisdiction;
+  const selectedAuth = jurisdictions.find(j => j.id === selectedJurisdiction);
+  const currentAuthName = selectedAuth?.shortName || selectedAuth?.name || 'PMC Pune';
 
   return (
     <div style={{
       background: 'var(--df-card-bg, #0f172a)',
       border: '1px solid var(--df-card-border, #1e293b)',
-      borderRadius: '12px',
-      padding: '16px 20px',
-      marginBottom: '16px',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.18)'
+      borderRadius: '10px',
+      padding: isExpanded ? '14px 18px' : '10px 16px',
+      marginBottom: '10px',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+      transition: 'all 0.2s ease'
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '34px', height: '34px', borderRadius: '8px',
-            background: 'rgba(37,99,235,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)'
-          }}>
-            <Building2 style={{ width: '18px', height: '18px' }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: 'var(--df-text, #f8fafc)' }}>
-                Maharashtra Planning Authority & UDCPR Regulations
-              </h3>
+      {/* Sleek Collapsed Single-Line Header */}
+      {!isExpanded ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px'
+        }}>
+          {/* Left: Jurisdiction & Regulations Summary */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{
+              width: '28px', height: '28px', borderRadius: '6px',
+              background: 'rgba(37,99,235,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', flexShrink: 0
+            }}>
+              <Building2 style={{ width: '15px', height: '15px' }} />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#f8fafc' }}>
+                {currentAuthName}
+              </span>
               <span style={{
-                fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
+                fontSize: '0.66rem', fontWeight: 800, padding: '1px 7px', borderRadius: '10px',
                 background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
               }}>
                 UDCPR 2020 Compliant
               </span>
+              <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                • {landUse === 'RESIDENTIAL' ? 'Residential' : landUse}
+              </span>
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--df-text-muted, #94a3b8)', margin: '2px 0 0 0' }}>
-              Configure jurisdiction and development norms before generating 2–3 genuine alternative plotting layouts (13A–13O)
-            </p>
+
+            {/* Quick Metrics Badges in Row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
+                background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 700
+              }}>
+                🌿 Open Space: {evaluatedNorms?.openSpacePercentage || 10}%
+              </span>
+              <span style={{
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
+                background: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.25)', fontWeight: 700
+              }}>
+                🏢 Amenity: {evaluatedNorms?.amenitySpacePercentage || 5}%
+              </span>
+              <span style={{
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
+                background: 'rgba(148, 163, 184, 0.12)', color: '#cbd5e1', border: '1px solid rgba(148, 163, 184, 0.25)', fontWeight: 700
+              }}>
+                🛣️ Road: {evaluatedNorms?.internalRoadWidthM || 9}M ({evaluatedNorms?.internalRoadWidthFt || 29.5}')
+              </span>
+              <span style={{
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
+                background: 'rgba(234, 179, 8, 0.12)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.25)', fontWeight: 700
+              }}>
+                📐 Min Plot: {evaluatedNorms?.minPlotAreaSqm || 100} m²
+              </span>
+            </div>
+          </div>
+
+          {/* Right Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => setIsExpanded(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px',
+                borderRadius: '6px', border: '1px solid #334155', background: '#1e293b',
+                color: '#cbd5e1', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
+              }}
+            >
+              <Sliders style={{ width: '13px', height: '13px' }} /> Configure Norms <ChevronDown style={{ width: '12px', height: '12px' }} />
+            </button>
+
+            <button
+              onClick={handleTriggerGenerate}
+              disabled={isGenerating}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px',
+                borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                color: '#ffffff', fontWeight: 800, fontSize: '0.76rem', border: 'none',
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                boxShadow: '0 2px 10px rgba(37,99,235,0.3)',
+                opacity: isGenerating ? 0.7 : 1
+              }}
+            >
+              <Sparkles style={{ width: '13px', height: '13px' }} />
+              {isGenerating ? 'Generating...' : 'Generate 2–3 Options'}
+            </button>
           </div>
         </div>
-
-        <button
-          onClick={handleTriggerGenerate}
-          disabled={isGenerating}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 18px',
-            borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-            color: '#ffffff', fontWeight: 800, fontSize: '0.82rem', border: 'none',
-            cursor: isGenerating ? 'not-allowed' : 'pointer',
-            boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
-            transition: 'all 0.2s ease', opacity: isGenerating ? 0.7 : 1
-          }}
-        >
-          <Sparkles style={{ width: '16px', height: '16px' }} />
-          {isGenerating ? 'Generating Best 2–3 Options...' : 'Generate Best 2–3 Alternatives'}
-        </button>
-      </div>
-
-      {/* Mandatory Notice if Unknown Jurisdiction (13C) */}
-      {isUnknownJurisdiction && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px',
-          background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444',
-          borderRadius: '8px', marginBottom: '14px', color: '#fca5a5', fontSize: '0.78rem'
-        }}>
-          <AlertTriangle style={{ width: '16px', height: '16px', color: '#ef4444', flexShrink: 0 }} />
-          <span>
-            <strong>Applicable planning authority/jurisdiction required for exact regulatory compliance.</strong>
-          </span>
-        </div>
-      )}
-
-      {/* Configuration Form Controls (13C) */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-        gap: '12px',
-        padding: '12px 14px',
-        background: 'rgba(15, 23, 42, 0.5)',
-        border: '1px solid rgba(255, 255, 255, 0.05)',
-        borderRadius: '8px',
-        marginBottom: '14px'
-      }}>
-        {/* JURISDICTION */}
+      ) : (
+        /* Expanded Full Configuration Form */
         <div>
-          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text-muted, #94a3b8)', marginBottom: '4px', textTransform: 'uppercase' }}>
-            Jurisdiction
-          </label>
-          <select
-            value={selectedJurisdiction}
-            onChange={(e) => setSelectedJurisdiction(e.target.value)}
-            style={{
-              width: '100%', padding: '7px 10px', borderRadius: '6px',
-              background: 'var(--df-bg, #090e17)', border: '1px solid var(--df-border, #334155)',
-              color: 'var(--df-text, #f8fafc)', fontSize: '0.78rem', fontWeight: 600
-            }}
-          >
-            {jurisdictions.map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* CITY / AREA */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text-muted, #94a3b8)', marginBottom: '4px', textTransform: 'uppercase' }}>
-            City / Area
-          </label>
-          <input
-            type="text"
-            value={cityArea}
-            onChange={(e) => setCityArea(e.target.value)}
-            placeholder="Enter City / District"
-            style={{
-              width: '100%', padding: '7px 10px', borderRadius: '6px',
-              background: 'var(--df-bg, #090e17)', border: '1px solid var(--df-border, #334155)',
-              color: 'var(--df-text, #f8fafc)', fontSize: '0.78rem'
-            }}
-          />
-        </div>
-
-        {/* LAND USE */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text-muted, #94a3b8)', marginBottom: '4px', textTransform: 'uppercase' }}>
-            Land Use
-          </label>
-          <select
-            value={landUse}
-            onChange={(e) => setLandUse(e.target.value)}
-            style={{
-              width: '100%', padding: '7px 10px', borderRadius: '6px',
-              background: 'var(--df-bg, #090e17)', border: '1px solid var(--df-border, #334155)',
-              color: 'var(--df-text, #f8fafc)', fontSize: '0.78rem', fontWeight: 600
-            }}
-          >
-            <option value="RESIDENTIAL">Residential (Standard UDCPR 100 m²)</option>
-            <option value="AFFORDABLE">Affordable Housing / Row Housing (50 m²)</option>
-            <option value="MIXED_USE">Mixed Use / Commercial Frontage (150 m²)</option>
-            <option value="COMMERCIAL">Commercial Plotted Layout (200 m²)</option>
-          </select>
-        </div>
-
-        {/* PLANNING REGULATION */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text-muted, #94a3b8)', marginBottom: '4px', textTransform: 'uppercase' }}>
-            Planning Regulation
-          </label>
-          <select
-            value={planningRegulation}
-            onChange={(e) => setPlanningRegulation(e.target.value)}
-            style={{
-              width: '100%', padding: '7px 10px', borderRadius: '6px',
-              background: 'var(--df-bg, #090e17)', border: '1px solid var(--df-border, #334155)',
-              color: 'var(--df-text, #f8fafc)', fontSize: '0.78rem', fontWeight: 600
-            }}
-          >
-            <option value="UDCPR_2020">Applicable UDCPR 2020 (Current)</option>
-            <option value="LOCAL_DP">Local Authority Sanctioned DP</option>
-          </select>
-        </div>
-
-        {/* CONGESTED AREA TOGGLE */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
-          <input
-            type="checkbox"
-            id="congestedToggle"
-            checked={isCongested}
-            onChange={(e) => setIsCongested(e.target.checked)}
-            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#2563eb' }}
-          />
-          <label htmlFor="congestedToggle" style={{ fontSize: '0.76rem', color: 'var(--df-text, #f8fafc)', cursor: 'pointer', fontWeight: 600 }}>
-            Gaothan / Congested Core (Rule 3.3.1: 6.0m Roads)
-          </label>
-        </div>
-      </div>
-
-      {/* Mandatory Space Allocation Dynamic Breakdown (13D, 13E, 13F, 13G, 13H) */}
-      {evaluatedNorms && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-          gap: '10px'
-        }}>
-          {/* Recreational Open Space */}
-          <div style={{
-            padding: '10px 12px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid rgba(16, 185, 129, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '0.72rem', fontWeight: 800 }}>
-              <Trees style={{ width: '14px', height: '14px' }} /> Open Space (Rule 3.4)
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '8px',
+                background: 'rgba(37,99,235,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)'
+              }}>
+                <Building2 style={{ width: '16px', height: '16px' }} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ fontSize: '0.90rem', fontWeight: 800, margin: 0, color: '#f8fafc' }}>
+                    Maharashtra Planning Authority & UDCPR Regulations
+                  </h3>
+                  <span style={{
+                    fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px',
+                    background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
+                  }}>
+                    UDCPR 2020 Compliant
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '2px 0 0 0' }}>
+                  Configure jurisdiction and development norms before generating 2–3 alternative plotting layouts (13A–13O)
+                </p>
+              </div>
             </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>
-              {evaluatedNorms.openSpacePercentage}%
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted, #94a3b8)' }}>
-              {evaluatedNorms.openSpaceRequiredSqm?.toFixed(0)} m² ({evaluatedNorms.openSpaceRequiredSqft?.toFixed(0)} sqft)
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setIsExpanded(false)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 10px',
+                  borderRadius: '6px', border: '1px solid #334155', background: '#1e293b',
+                  color: '#cbd5e1', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                <ChevronUp style={{ width: '12px', height: '12px' }} /> Collapse
+              </button>
+
+              <button
+                onClick={handleTriggerGenerate}
+                disabled={isGenerating}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px',
+                  borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  color: '#ffffff', fontWeight: 800, fontSize: '0.78rem', border: 'none',
+                  cursor: isGenerating ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 3px 12px rgba(37,99,235,0.35)',
+                  opacity: isGenerating ? 0.7 : 1
+                }}
+              >
+                <Sparkles style={{ width: '14px', height: '14px' }} />
+                {isGenerating ? 'Generating...' : 'Generate Best 2–3 Options'}
+              </button>
             </div>
           </div>
 
-          {/* Civic Amenity Space */}
+          {/* Form Controls */}
           <div style={{
-            padding: '10px 12px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.08)',
-            border: '1px solid rgba(59, 130, 246, 0.25)'
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: '10px',
+            padding: '10px 12px',
+            background: 'rgba(15, 23, 42, 0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRadius: '8px',
+            marginBottom: '10px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#3b82f6', fontSize: '0.72rem', fontWeight: 800 }}>
-              <Building2 style={{ width: '14px', height: '14px' }} /> Amenity Space (Rule 3.5)
+            <div>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+                Jurisdiction
+              </label>
+              <select
+                value={selectedJurisdiction}
+                onChange={(e) => setSelectedJurisdiction(e.target.value)}
+                style={{
+                  width: '100%', padding: '6px 8px', borderRadius: '5px',
+                  background: '#090e17', border: '1px solid #334155',
+                  color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600
+                }}
+              >
+                {jurisdictions.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#3b82f6', marginTop: '2px' }}>
-              {evaluatedNorms.amenitySpacePercentage}%
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+                City / Area
+              </label>
+              <input
+                type="text"
+                value={cityArea}
+                onChange={(e) => setCityArea(e.target.value)}
+                placeholder="Enter City / District"
+                style={{
+                  width: '100%', padding: '6px 8px', borderRadius: '5px',
+                  background: '#090e17', border: '1px solid #334155',
+                  color: '#f8fafc', fontSize: '0.75rem'
+                }}
+              />
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted, #94a3b8)' }}>
-              {evaluatedNorms.amenitySpaceRequiredSqm > 0 ? `${evaluatedNorms.amenitySpaceRequiredSqm?.toFixed(0)} m²` : 'Exempted (< threshold)'}
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+                Land Use
+              </label>
+              <select
+                value={landUse}
+                onChange={(e) => setLandUse(e.target.value)}
+                style={{
+                  width: '100%', padding: '6px 8px', borderRadius: '5px',
+                  background: '#090e17', border: '1px solid #334155',
+                  color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600
+                }}
+              >
+                <option value="RESIDENTIAL">Residential (UDCPR 100 m²)</option>
+                <option value="AFFORDABLE">Affordable Housing (50 m²)</option>
+                <option value="MIXED_USE">Mixed Use (150 m²)</option>
+                <option value="COMMERCIAL">Commercial (200 m²)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+                Planning Regulation
+              </label>
+              <select
+                value={planningRegulation}
+                onChange={(e) => setPlanningRegulation(e.target.value)}
+                style={{
+                  width: '100%', padding: '6px 8px', borderRadius: '5px',
+                  background: '#090e17', border: '1px solid #334155',
+                  color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600
+                }}
+              >
+                <option value="UDCPR_2020">Applicable UDCPR 2020 (Current)</option>
+                <option value="DCR_MUMBAI_2034">DCPR 2034 (Mumbai)</option>
+                <option value="PMRDA_DP_2021">PMRDA Regional DP</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#cbd5e1', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={isCongested}
+                  onChange={(e) => setIsCongested(e.target.checked)}
+                  style={{ accentColor: '#2563eb', cursor: 'pointer' }}
+                />
+                Gaothan / Congested Core (Rule 3.3.1: 6.0m Roads)
+              </label>
             </div>
           </div>
 
-          {/* Road Widths */}
-          <div style={{
-            padding: '10px 12px', borderRadius: '8px', background: 'rgba(100, 116, 139, 0.08)',
-            border: '1px solid rgba(100, 116, 139, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800 }}>
-              <Layers style={{ width: '14px', height: '14px' }} /> Road Corridor (Rule 3.3)
-            </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
-              {evaluatedNorms.internalRoadWidthM} M <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>({evaluatedNorms.internalRoadWidthFt} FT)</span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted, #94a3b8)' }}>
-              Main: {evaluatedNorms.mainRoadWidthM} M ({evaluatedNorms.mainRoadWidthFt} FT)
-            </div>
-          </div>
+          {/* Dynamic Statutory Space Cards */}
+          {evaluatedNorms && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '8px'
+            }}>
+              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <Trees style={{ width: '13px', height: '13px' }} /> Open Space (Rule 3.4)
+                </div>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                  {evaluatedNorms.openSpacePercentage}%
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                  {evaluatedNorms.allocatedOpenSpaceSqm?.toFixed(0)} m² ({evaluatedNorms.allocatedOpenSpaceSqft?.toFixed(0)} sqft)
+                </div>
+              </div>
 
-          {/* Min Plot Size & Frontage */}
-          <div style={{
-            padding: '10px 12px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.08)',
-            border: '1px solid rgba(245, 158, 11, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#f59e0b', fontSize: '0.72rem', fontWeight: 800 }}>
-              <Home style={{ width: '14px', height: '14px' }} /> Min Plot & Frontage
-            </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f59e0b', marginTop: '2px' }}>
-              {evaluatedNorms.minPlotAreaSqm} m² <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>({evaluatedNorms.minPlotAreaSqft?.toFixed(0)} sqft)</span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted, #94a3b8)' }}>
-              Frontage: {evaluatedNorms.minFrontageM} M ({evaluatedNorms.minFrontageFt} FT)
-            </div>
-          </div>
+              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#3b82f6', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <Building2 style={{ width: '13px', height: '13px' }} /> Amenity Space (Rule 3.5)
+                </div>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                  {evaluatedNorms.amenitySpacePercentage}%
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                  {evaluatedNorms.allocatedAmenitySqm?.toFixed(0)} m²
+                </div>
+              </div>
 
-          {/* Boundary Setback */}
-          <div style={{
-            padding: '10px 12px', borderRadius: '8px', background: 'rgba(168, 85, 247, 0.08)',
-            border: '1px solid rgba(168, 85, 247, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#c084fc', fontSize: '0.72rem', fontWeight: 800 }}>
-              <Compass style={{ width: '14px', height: '14px' }} /> Peripheral Setback
+              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <Compass style={{ width: '13px', height: '13px' }} /> Road Corridor (Rule 3.3)
+                </div>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                  {evaluatedNorms.internalRoadWidthM} M <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>({evaluatedNorms.internalRoadWidthFt} FT)</span>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                  Main: {evaluatedNorms.mainRoadWidthM} M ({evaluatedNorms.mainRoadWidthFt} FT)
+                </div>
+              </div>
+
+              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#f59e0b', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <Home style={{ width: '13px', height: '13px' }} /> Min Plot & Frontage
+                </div>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                  {evaluatedNorms.minPlotAreaSqm} m² <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>({evaluatedNorms.minPlotAreaSqft} sqft)</span>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                  Frontage: {evaluatedNorms.minFrontageM} M ({evaluatedNorms.minFrontageFt} FT)
+                </div>
+              </div>
+
+              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#a855f7', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <Zap style={{ width: '13px', height: '13px' }} /> Peripheral Setback
+                </div>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                  {evaluatedNorms.outerBoundarySetbackM} M <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>({evaluatedNorms.outerBoundarySetbackFt} FT)</span>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                  UDCPR Rule 6.1 boundary buffer
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#c084fc', marginTop: '2px' }}>
-              {evaluatedNorms.outerBoundarySetbackM} M <span style={{ fontSize: '0.75rem', color: '#c084fc' }}>({evaluatedNorms.outerBoundarySetbackFt} FT)</span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted, #94a3b8)' }}>
-              UDCPR Rule 6.1 Boundary Buffer
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

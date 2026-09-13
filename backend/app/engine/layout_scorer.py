@@ -311,9 +311,9 @@ class LayoutScorer:
         - OPTION 3 — BEST LAND UTILIZATION
         """
         badges = [
-            "OPTION 1 — BEST PLOT EFFICIENCY",
+            "OPTION 1 — BEST OVERALL",
             "OPTION 2 — BEST ACCESS",
-            "OPTION 3 — BEST OVERALL"
+            "OPTION 3 — BEST LAND UTILIZATION"
         ]
 
         # Sort variants by composite score descending

@@ -43,32 +43,25 @@ def test_api_planning_norms_evaluate():
 
 
 def test_api_generate_layouts_and_variants():
-    # 1. Fetch or create project
-    p_resp = client.get("/api/v1/projects")
-    assert p_resp.status_code == 200
-    projects = p_resp.json()
-    if not projects:
-        # Create a test project
-        create_payload = {
-            "name": "Pune Green Enclave",
-            "developer": "Godrej Properties",
-            "type": "Residential",
-            "landClassification": "N.A. Residential",
-            "description": "Test plotting layout project",
-            "state": "Maharashtra",
-            "district": "Pune",
-            "taluka": "Haveli",
-            "cityVillage": "Pune",
-            "pincode": "411001",
-            "surveyNumbers": ["45/1A", "45/1B"],
-            "grossArea": 2.0,
-            "areaUnit": "Acres"
-        }
-        create_resp = client.post("/api/v1/projects", json=create_payload)
-        assert create_resp.status_code == 201
-        proj_id = create_resp.json()["id"]
-    else:
-        proj_id = projects[0]["id"]
+    # 1. Create a dedicated test project for test isolation
+    create_payload = {
+        "name": "Pune Green Enclave Test",
+        "developer": "Godrej Properties",
+        "type": "Residential",
+        "landClassification": "N.A. Residential",
+        "description": "Test plotting layout project",
+        "state": "Maharashtra",
+        "district": "Pune",
+        "taluka": "Haveli",
+        "cityVillage": "Pune",
+        "pincode": "411001",
+        "surveyNumbers": ["45/1A", "45/1B"],
+        "grossArea": 2.0,
+        "areaUnit": "Acres"
+    }
+    create_resp = client.post("/api/v1/projects", json=create_payload)
+    assert create_resp.status_code == 201
+    proj_id = create_resp.json()["id"]
 
     # 2. Trigger generate layouts
     gen_payload = {
@@ -111,3 +104,45 @@ def test_api_generate_layouts_and_variants():
     assert "plots" in model
     assert "roads" in model
     assert "amenities" in model
+
+
+def test_api_boundary_detection_and_confirmation():
+    # 1. Fetch or create project
+    p_resp = client.get("/api/v1/projects")
+    assert p_resp.status_code == 200
+    projects = p_resp.json()
+    assert len(projects) > 0
+    proj_id = projects[0]["id"]
+
+    # 2. Detect boundary with parameters
+    detect_resp = client.post(
+        f"/api/v1/projects/{proj_id}/detect-boundary",
+        json={"epsilonRatio": 0.012, "detectionMode": "AUTO"}
+    )
+    assert detect_resp.status_code == 200
+    detect_data = detect_resp.json()
+    assert "polygon" in detect_data
+    assert len(detect_data["polygon"]) >= 3
+    assert detect_data["status"] == "DETECTED"
+
+    # 3. Confirm boundary
+    poly = detect_data["polygon"]
+    confirm_resp = client.post(
+        f"/api/v1/projects/{proj_id}/confirm-boundary",
+        json={"polygonVertices": poly, "polygon": poly, "boundaryConfirmed": True}
+    )
+    assert confirm_resp.status_code == 200
+    confirm_data = confirm_resp.json()
+    assert confirm_data["status"] == "LOCKED"
+    assert confirm_data["isLocked"] is True
+    assert confirm_data["areaSqft"] > 0
+
+    # 4. Generate 2D Layout inside confirmed boundary
+    gen_resp = client.post(
+        f"/api/v1/projects/{proj_id}/generate-layouts",
+        json={"lengthFt": 350.0, "breadthFt": 240.0, "polygonVertices": poly}
+    )
+    assert gen_resp.status_code == 200
+    gen_data = gen_resp.json()
+    assert gen_data["validOptionsCount"] >= 1
+

@@ -438,9 +438,16 @@ class BoundaryDetectionEngine:
         return None, 0.35, "Could not isolate outer CAD boundary polygon. Manual verification recommended.", {}
 
     @classmethod
-    def detect_from_image(cls, img_bgr: np.ndarray) -> Dict[str, Any]:
+    def detect_from_image(
+        cls,
+        img_bgr: np.ndarray,
+        epsilon_ratio: float = 0.012,
+        min_area_ratio: float = 0.04,
+        detection_mode: str = "AUTO"
+    ) -> Dict[str, Any]:
         """
         Master detector routing based on classified input category (Section 27).
+        Allows tuning epsilon_ratio, min_area_ratio, and detection_mode.
         """
         if img_bgr is None or img_bgr.size == 0:
             return {
@@ -451,19 +458,28 @@ class BoundaryDetectionEngine:
                 "confidence": 0.0
             }
 
-        input_type = cls.classify_input_type(img_bgr)
+        if detection_mode and detection_mode.upper() in ["SATELLITE_AERIAL", "WHITE_PAGE_DRAWING", "CAD_TECHNICAL"]:
+            input_type = detection_mode.upper()
+        else:
+            input_type = cls.classify_input_type(img_bgr)
         logger.info(f"Classified document input type: {input_type}")
 
         if input_type == "SATELLITE_AERIAL":
-            verts, conf, msg, meta = cls.extract_from_satellite_image(img_bgr)
+            verts, conf, msg, meta = cls.extract_from_satellite_image(img_bgr, min_area_ratio=min_area_ratio)
         elif input_type == "WHITE_PAGE_DRAWING":
-            verts, conf, msg, meta = cls.extract_from_white_page_drawing(img_bgr)
+            verts, conf, msg, meta = cls.extract_from_white_page_drawing(img_bgr, min_area_ratio=min_area_ratio)
         else:  # CAD_TECHNICAL
-            verts, conf, msg, meta = cls.extract_from_cad_technical_drawing(img_bgr)
+            verts, conf, msg, meta = cls.extract_from_cad_technical_drawing(img_bgr, min_area_ratio=min_area_ratio)
 
         # If primary category failed, try white page fallback
         if not verts and input_type != "WHITE_PAGE_DRAWING":
-            verts, conf, msg, meta = cls.extract_from_white_page_drawing(img_bgr)
+            verts, conf, msg, meta = cls.extract_from_white_page_drawing(img_bgr, min_area_ratio=min_area_ratio)
+
+        # Simplify with custom epsilon if provided
+        if verts and len(verts) >= 3 and epsilon_ratio != 0.012:
+            poly_simp, clean_simp, is_valid_simp = cls.simplify_and_validate_polygon(verts, epsilon_ratio=epsilon_ratio)
+            if is_valid_simp and clean_simp:
+                verts = clean_simp
 
         is_valid = bool(verts and len(verts) >= 3 and conf >= 0.50)
 
@@ -484,12 +500,23 @@ class BoundaryDetectionEngine:
         }
 
     @classmethod
-    def detect_from_file(cls, file_path: str) -> Dict[str, Any]:
+    def detect_from_file(
+        cls,
+        file_path: str,
+        epsilon_ratio: float = 0.012,
+        min_area_ratio: float = 0.04,
+        detection_mode: str = "AUTO"
+    ) -> Dict[str, Any]:
         """Reads image or CAD file from disk and extracts the land boundary polygon."""
         try:
             img = cv2.imread(file_path)
             if img is not None:
-                return cls.detect_from_image(img)
+                return cls.detect_from_image(
+                    img,
+                    epsilon_ratio=epsilon_ratio,
+                    min_area_ratio=min_area_ratio,
+                    detection_mode=detection_mode
+                )
             return {
                 "isValid": False,
                 "inputCategory": "FILE_READ_ERROR",

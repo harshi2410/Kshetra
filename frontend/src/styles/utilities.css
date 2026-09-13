@@ -263,6 +263,33 @@
     -webkit-backdrop-filter: blur(12px) !important;
     background: rgba(18, 24, 38, 0.92) !important;
   }
+
+  /* Boundary Editor Modal Responsive Rules */
+  .boundary-mobile-tabs {
+    display: flex !important;
+  }
+
+  .boundary-workspace {
+    flex-direction: column !important;
+  }
+
+  .boundary-canvas-pane {
+    height: 50vh !important;
+    min-height: 280px !important;
+  }
+
+  .boundary-inspector-pane {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-left: none !important;
+    border-top: 1px solid #1e293b !important;
+    height: auto !important;
+    max-height: 50vh !important;
+  }
+
+  .boundary-workspace .mobile-hidden {
+    display: none !important;
+  }
 }
 
 /* Small Screens (<= 640px) */

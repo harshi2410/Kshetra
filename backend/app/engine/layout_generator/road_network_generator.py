@@ -226,52 +226,91 @@ class RoadNetworkGenerator:
         block_depth_ft: float = 85.0,
     ) -> RoadNetwork:
         """
-        OPTION 1 — Maximum Practical Plot Efficiency (Orthogonal Grid Spine & Cross Streets).
-        - Central primary avenue aligned with main entry.
-        - Efficient cross street feeders maximizing linear frontage.
+        OPTION 1 — Maximum Practical Plot Efficiency (Orientation-Adaptive Grid & Feeders).
+        - Automatically aligns primary spine with the dominant parcel axis (Landscape vs Portrait).
+        - Generates clean orthogonal cross-street corridors dividing land into uniform plotting blocks.
         - Every corridor is strictly clipped to the authentic land polygon.
         """
         bbox = land.bbox
         land_poly = land.shapely_polygon
         roads: List[RoadSegment] = []
 
-        entry = land.entry_points[0] if land.entry_points else None
-        spine_x = entry.x if entry else (bbox.min_x + bbox.width * 0.5)
+        is_landscape = bbox.width >= (bbox.height * 1.35)
 
-        # 1. Main Spine Avenue (12.0 M / 39.4 FT)
-        spine_start = Point(spine_x, bbox.min_y - 10.0)
-        spine_end = Point(spine_x, bbox.max_y + 10.0)
-        spine_corridor = cls._create_corridor(spine_start, spine_end, main_road_width)
-        clipped_spine = cls._clip_corridor_to_land(
-            corridor_pts=spine_corridor,
-            land_poly=land_poly,
-            road_id="road-grid-main-01",
-            name=f"Main Access Avenue ({main_road_width * 0.3048:.1f}M)",
-            road_type="MAIN",
-            width_ft=main_road_width,
-            nominal_start=spine_start,
-            nominal_end=spine_end,
-        )
-        roads.extend(clipped_spine)
-
-        # 2. Horizontal Cross Feeders (9.0 M / 29.5 FT)
-        num_feeders = max(1, int(bbox.height / block_depth_ft) - 1)
-        for i in range(1, num_feeders + 1):
-            y = bbox.min_y + (i * (bbox.height / (num_feeders + 1)))
-            p_left = Point(bbox.min_x - 10.0, y)
-            p_right = Point(bbox.max_x + 10.0, y)
-            feeder_corridor = cls._create_corridor(p_left, p_right, feeder_road_width)
-            clipped_feeder = cls._clip_corridor_to_land(
-                corridor_pts=feeder_corridor,
+        if is_landscape:
+            # Wide parcel: Horizontal spine + Vertical cross feeders
+            spine_y = bbox.min_y + (bbox.height * 0.5)
+            spine_start = Point(bbox.min_x - 10.0, spine_y)
+            spine_end = Point(bbox.max_x + 10.0, spine_y)
+            spine_corridor = cls._create_corridor(spine_start, spine_end, main_road_width)
+            clipped_spine = cls._clip_corridor_to_land(
+                corridor_pts=spine_corridor,
                 land_poly=land_poly,
-                road_id=f"road-grid-feeder-{i:02d}",
-                name=f"Internal Cross Street {i:02d} ({feeder_road_width * 0.3048:.1f}M)",
-                road_type="FEEDER",
-                width_ft=feeder_road_width,
-                nominal_start=p_left,
-                nominal_end=p_right,
+                road_id="road-grid-main-h",
+                name=f"Main Central Avenue ({main_road_width * 0.3048:.1f}M)",
+                road_type="MAIN",
+                width_ft=main_road_width,
+                nominal_start=spine_start,
+                nominal_end=spine_end,
             )
-            roads.extend(clipped_feeder)
+            roads.extend(clipped_spine)
+
+            # Vertical cross feeders
+            num_feeders = max(1, int(bbox.width / block_depth_ft) - 1)
+            for i in range(1, num_feeders + 1):
+                x = bbox.min_x + (i * (bbox.width / (num_feeders + 1)))
+                p_top = Point(x, bbox.min_y - 10.0)
+                p_bottom = Point(x, bbox.max_y + 10.0)
+                feeder_corridor = cls._create_corridor(p_top, p_bottom, feeder_road_width)
+                clipped_feeder = cls._clip_corridor_to_land(
+                    corridor_pts=feeder_corridor,
+                    land_poly=land_poly,
+                    road_id=f"road-grid-feeder-v-{i:02d}",
+                    name=f"Cross Avenue {i:02d} ({feeder_road_width * 0.3048:.1f}M)",
+                    road_type="FEEDER",
+                    width_ft=feeder_road_width,
+                    nominal_start=p_top,
+                    nominal_end=p_bottom,
+                )
+                roads.extend(clipped_feeder)
+        else:
+            # Tall or balanced parcel: Vertical spine + Horizontal cross feeders
+            entry = land.entry_points[0] if land.entry_points else None
+            spine_x = entry.x if entry else (bbox.min_x + bbox.width * 0.5)
+
+            spine_start = Point(spine_x, bbox.min_y - 10.0)
+            spine_end = Point(spine_x, bbox.max_y + 10.0)
+            spine_corridor = cls._create_corridor(spine_start, spine_end, main_road_width)
+            clipped_spine = cls._clip_corridor_to_land(
+                corridor_pts=spine_corridor,
+                land_poly=land_poly,
+                road_id="road-grid-main-01",
+                name=f"Main Access Avenue ({main_road_width * 0.3048:.1f}M)",
+                road_type="MAIN",
+                width_ft=main_road_width,
+                nominal_start=spine_start,
+                nominal_end=spine_end,
+            )
+            roads.extend(clipped_spine)
+
+            # Horizontal cross feeders
+            num_feeders = max(1, int(bbox.height / block_depth_ft) - 1)
+            for i in range(1, num_feeders + 1):
+                y = bbox.min_y + (i * (bbox.height / (num_feeders + 1)))
+                p_left = Point(bbox.min_x - 10.0, y)
+                p_right = Point(bbox.max_x + 10.0, y)
+                feeder_corridor = cls._create_corridor(p_left, p_right, feeder_road_width)
+                clipped_feeder = cls._clip_corridor_to_land(
+                    corridor_pts=feeder_corridor,
+                    land_poly=land_poly,
+                    road_id=f"road-grid-feeder-{i:02d}",
+                    name=f"Internal Cross Street {i:02d} ({feeder_road_width * 0.3048:.1f}M)",
+                    road_type="FEEDER",
+                    width_ft=feeder_road_width,
+                    nominal_start=p_left,
+                    nominal_end=p_right,
+                )
+                roads.extend(clipped_feeder)
 
         return RoadNetwork(roads)
 

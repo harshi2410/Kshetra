@@ -61,6 +61,7 @@ export default function ContentLayout() {
   const location = useLocation();
 
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
@@ -138,7 +139,7 @@ export default function ContentLayout() {
   ] : [];
 
   /* ─── Sidebar inner content ─── */
-  const SidebarNav = ({ onClose }) => {
+  const SidebarNav = ({ onClose, isCollapsed = false }) => {
     const navSections = isCreateProject
       ? CREATE_PROJECT_NAV_SECTIONS
       : currentProjectId
@@ -146,10 +147,13 @@ export default function ContentLayout() {
       : GLOBAL_NAV_SECTIONS;
 
     return (
-      <nav style={{ padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: 0, flex: 1, overflowY: 'auto' }}>
+      <nav style={{
+        padding: isCollapsed ? '12px 6px' : '16px 10px',
+        display: 'flex', flexDirection: 'column', gap: 0, flex: 1, overflowY: 'auto'
+      }}>
         
         {/* Create Project Header inside Sidebar */}
-        {isCreateProject && (
+        {isCreateProject && !isCollapsed && (
           <div style={{
             padding: '8px 10px 12px',
             borderBottom: '1px solid var(--df-border)',
@@ -179,7 +183,7 @@ export default function ContentLayout() {
         )}
 
         {/* Project Header inside Sidebar when inside a Project Workspace */}
-        {currentProjectId && (
+        {currentProjectId && !isCollapsed && (
           <div style={{
             padding: '8px 10px 12px',
             borderBottom: '1px solid var(--df-border)',
@@ -211,16 +215,18 @@ export default function ContentLayout() {
         {navSections.map((section, si) => (
           <div key={si} style={{ marginBottom: si < navSections.length - 1 ? '16px' : 0 }}>
             {/* Section heading */}
-            <div style={{
-              fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em',
-              textTransform: 'uppercase', color: 'var(--df-text-muted)',
-              opacity: 0.55, padding: '0 8px', marginBottom: '4px'
-            }}>
-              {section.heading}
-            </div>
+            {!isCollapsed && (
+              <div style={{
+                fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em',
+                textTransform: 'uppercase', color: 'var(--df-text-muted)',
+                opacity: 0.55, padding: '0 8px', marginBottom: '4px'
+              }}>
+                {section.heading}
+              </div>
+            )}
 
             {/* Nav items */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isExactActive = isCreateProject
@@ -236,11 +242,12 @@ export default function ContentLayout() {
                     key={item.name}
                     to={item.path}
                     onClick={onClose}
+                    title={item.name}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 10px',
+                      justifyContent: isCollapsed ? 'center' : 'space-between',
+                      padding: isCollapsed ? '9px 0' : '8px 10px',
                       borderRadius: '6px',
                       fontSize: '13px',
                       fontWeight: isExactActive ? 700 : 500,
@@ -260,11 +267,11 @@ export default function ContentLayout() {
                       e.currentTarget.style.color = isExactActive ? 'var(--df-accent)' : 'var(--df-text-soft)';
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Icon style={{ width: '14px', height: '14px', flexShrink: 0, strokeWidth: isExactActive ? 2.2 : 1.75 }} />
-                      <span>{item.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isCollapsed ? 0 : '10px', justifyContent: isCollapsed ? 'center' : 'flex-start' }}>
+                      <Icon style={{ width: '15px', height: '15px', flexShrink: 0, strokeWidth: isExactActive ? 2.2 : 1.75 }} />
+                      {!isCollapsed && <span>{item.name}</span>}
                     </div>
-                    {isCompleted && (
+                    {!isCollapsed && isCompleted && (
                       <span style={{ 
                         width: '15px', height: '15px', borderRadius: '50%', 
                         backgroundColor: 'var(--df-success)', color: '#fff', 
@@ -281,7 +288,7 @@ export default function ContentLayout() {
 
             {/* Divider between sections */}
             {si < navSections.length - 1 && (
-              <div style={{ height: '1px', background: 'var(--df-border)', margin: '10px 8px 0' }} />
+              <div style={{ height: '1px', background: 'var(--df-border)', margin: '10px 4px 0' }} />
             )}
           </div>
         ))}
@@ -317,6 +324,21 @@ export default function ContentLayout() {
           aria-label="Open Navigation Menu"
         >
           <Menu style={{ width: '18px', height: '18px' }} />
+        </button>
+
+        {/* Desktop Sidebar Collapse Toggle */}
+        <button
+          className="hide-on-mobile"
+          onClick={() => setIsSidebarCollapsed(prev => !prev)}
+          title={isSidebarCollapsed ? "Expand Sidebar (240px)" : "Collapse Sidebar for Full CAD Canvas (64px)"}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: '28px', height: '28px', background: 'var(--df-card-bg)',
+            border: '1px solid var(--df-border)', cursor: 'pointer', color: 'var(--df-text-muted)',
+            borderRadius: '6px', flexShrink: 0, transition: 'all 0.15s ease'
+          }}
+        >
+          <Menu style={{ width: '14px', height: '14px' }} />
         </button>
 
         {/* Brand */}
@@ -550,16 +572,17 @@ export default function ContentLayout() {
           top: 'var(--df-navbar-height)',
           left: 0,
           bottom: 0,
-          width: 'var(--df-sidebar-width)',
+          width: isSidebarCollapsed ? '64px' : 'var(--df-sidebar-width, 240px)',
           backgroundColor: 'var(--df-sidebar-bg)',
           borderRight: '1px solid var(--df-border)',
           zIndex: 'var(--z-sidebar)',
           overflowY: 'auto',
           overflowX: 'hidden',
           scrollbarWidth: 'none',
+          transition: 'width 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        <SidebarNav onClose={() => {}} />
+        <SidebarNav onClose={() => {}} isCollapsed={isSidebarCollapsed} />
       </aside>
 
       {/* MOBILE SLIDE-OUT DRAWER */}
@@ -591,7 +614,7 @@ export default function ContentLayout() {
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
             </div>
-            <SidebarNav onClose={() => setIsMobileOpen(false)} />
+            <SidebarNav onClose={() => setIsMobileOpen(false)} isCollapsed={false} />
           </aside>
         </div>
       )}
@@ -600,12 +623,13 @@ export default function ContentLayout() {
       <main
         className="app-main-layout"
         style={{
-          marginLeft: 'var(--df-sidebar-width)',
+          marginLeft: isSidebarCollapsed ? '64px' : 'var(--df-sidebar-width, 240px)',
           marginTop: 'var(--df-navbar-height)',
           minHeight: 'calc(100dvh - var(--df-navbar-height))',
           backgroundColor: 'var(--df-bg)',
           overflowY: 'auto',
-          padding: '18px 24px 32px',
+          padding: '16px 20px 28px',
+          transition: 'margin-left 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
         <Outlet />

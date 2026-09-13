@@ -38,8 +38,24 @@ class EntryPointInput(BaseModel):
 
 
 class ConfirmBoundaryRequest(BaseModel):
-    polygonVertices: List[List[float]] = Field(..., min_length=3, description="Confirmed boundary polygon vertices [[x, y], ...]")
+    polygonVertices: Optional[List[List[float]]] = Field(None, description="Confirmed boundary polygon vertices [[x, y], ...]")
+    polygon: Optional[List[List[float]]] = Field(None, description="Alias for polygonVertices")
     boundaryConfirmed: bool = Field(True, description="Explicit confirmation flag")
+
+    def get_vertices(self) -> List[List[float]]:
+        pts = self.polygonVertices or self.polygon or []
+        return pts
+
+
+class DetectBoundaryRequest(BaseModel):
+    epsilonRatio: Optional[float] = Field(0.012, description="Simplification tolerance (0.002 - 0.05)")
+    minAreaRatio: Optional[float] = Field(0.04, description="Minimum enclosed area ratio (0.01 - 0.30)")
+    detectionMode: Optional[str] = Field("AUTO", description="AUTO | WHITE_PAGE_DRAWING | SATELLITE_AERIAL | CAD_TECHNICAL | MANUAL")
+    sensitivity: Optional[float] = Field(50.0, description="Detection sensitivity 0-100")
+    customPoints: Optional[List[List[float]]] = Field(None, description="Manual vertex coordinates")
+    widthFt: Optional[float] = Field(None, description="Manual width override in feet")
+    breadthFt: Optional[float] = Field(None, description="Manual breadth override in feet")
+
 
 
 class EvaluatePlanningNormsRequest(BaseModel):
@@ -132,10 +148,15 @@ def evaluate_planning_norms(req: EvaluatePlanningNormsRequest):
 # ──────────────────────────────── Boundary-First Perception & Confirmation Endpoints ────────────────────────────────
 
 @router.post("/projects/{project_id}/detect-boundary")
-def detect_boundary(project_id: str, db: Session = Depends(get_db)):
+def detect_boundary(
+    project_id: str,
+    req: Optional[DetectBoundaryRequest] = None,
+    db: Session = Depends(get_db)
+):
     """
     Perception stage (Section 27, 28): Auto-detects authentic land boundary polygon from project's uploaded layout.
-    Supports Satellite / Aerial (Type A), 2D White Page Drawing (Type B), and CAD / Technical (Type C).
+    Supports Satellite / Aerial (Type A), 2D White Page Drawing (Type B), and CAD / Technical (Type C),
+    with customizable detection parameters (simplification tolerance, sensitivity, mode override).
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -143,9 +164,28 @@ def detect_boundary(project_id: str, db: Session = Depends(get_db)):
 
     layout_source = db.query(LayoutSource).filter(LayoutSource.project_id == project_id).order_by(LayoutSource.uploaded_at.desc()).first()
 
+    epsilon_ratio = req.epsilonRatio if req and req.epsilonRatio is not None else 0.012
+    min_area_ratio = req.minAreaRatio if req and req.minAreaRatio is not None else 0.04
+    detection_mode = req.detectionMode if req and req.detectionMode else "AUTO"
+
     detection_res = None
-    if layout_source and layout_source.file_path:
-        detection_res = boundary_detection_engine_instance.detect_from_file(layout_source.file_path)
+    if req and req.customPoints and len(req.customPoints) >= 3:
+        detection_res = {
+            "isValid": True,
+            "inputCategory": "MANUAL",
+            "polygon": req.customPoints,
+            "geometry": req.customPoints,
+            "confidence": 0.99,
+            "statusMessage": "Using manual boundary vertices.",
+            "shapeType": "MANUAL_POLYGON"
+        }
+    elif layout_source and layout_source.file_path:
+        detection_res = boundary_detection_engine_instance.detect_from_file(
+            layout_source.file_path,
+            epsilon_ratio=epsilon_ratio,
+            min_area_ratio=min_area_ratio,
+            detection_mode=detection_mode
+        )
 
     # If file detection returned empty or no file on disk, check if project already has confirmed polygon
     if (not detection_res or not detection_res.get("polygon")) and project.land_polygon_json:
@@ -157,7 +197,7 @@ def detect_boundary(project_id: str, db: Session = Depends(get_db)):
                     "inputCategory": "SAVED_BOUNDARY",
                     "polygon": stored_poly,
                     "geometry": stored_poly,
-                    "confidence": 0.95,
+                    "confidence": 0.98,
                     "statusMessage": "Loaded saved project land boundary",
                     "shapeType": "AUTHENTIC_POLYGON",
                 }
@@ -166,8 +206,8 @@ def detect_boundary(project_id: str, db: Session = Depends(get_db)):
 
     # Default authentic irregular polygon if neither file nor stored polygon exists
     if not detection_res or not detection_res.get("polygon"):
-        w = project.land_length_ft or 350.0
-        h = project.land_breadth_ft or 240.0
+        w = (req.widthFt if req and req.widthFt else None) or project.land_length_ft or 350.0
+        h = (req.breadthFt if req and req.breadthFt else None) or project.land_breadth_ft or 240.0
         # Realistic irregular slanted trapezoid (never square)
         default_irregular = [
             [0.0, 0.0],
@@ -187,15 +227,23 @@ def detect_boundary(project_id: str, db: Session = Depends(get_db)):
         }
 
     verts = detection_res.get("polygon", [])
-    poly_obj, clean_v, is_val = boundary_detection_engine_instance.simplify_and_validate_polygon(verts)
+    poly_obj, clean_v, is_val = boundary_detection_engine_instance.simplify_and_validate_polygon(
+        verts,
+        epsilon_ratio=epsilon_ratio
+    )
     area_sqft = float(poly_obj.area) if poly_obj else 0.0
     peri_ft = float(poly_obj.length) if poly_obj else 0.0
+    shape_meta = boundary_detection_engine_instance.classify_shape_characteristics(poly_obj) if poly_obj else {}
 
+    final_polygon = clean_v or verts
     return {
         "projectId": project_id,
-        "detectedBoundary": clean_v or verts,
+        "status": "DETECTED",
+        "polygon": final_polygon,
+        "polygonVertices": final_polygon,
+        "detectedBoundary": final_polygon,
         "inputCategory": detection_res.get("inputCategory", "WHITE_PAGE_DRAWING"),
-        "shapeType": detection_res.get("shapeType", "IRREGULAR"),
+        "shapeType": shape_meta.get("shapeType", detection_res.get("shapeType", "IRREGULAR")),
         "areaSqft": round(area_sqft, 1),
         "areaSqm": round(area_sqft * 0.092903, 1),
         "perimeterFt": round(peri_ft, 1),
@@ -216,18 +264,32 @@ def confirm_boundary(project_id: str, req: ConfirmBoundaryRequest, db: Session =
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
-    if not req.polygonVertices or len(req.polygonVertices) < 3:
+    vertices = req.get_vertices()
+    if not vertices or len(vertices) < 3:
         raise HTTPException(status_code=400, detail="Confirmed boundary must contain at least 3 vertices.")
 
     poly_obj, clean_verts, is_valid = boundary_detection_engine_instance.simplify_and_validate_polygon(
-        req.polygonVertices, epsilon_ratio=0.005
+        vertices, epsilon_ratio=0.003
     )
-    if not is_valid or not poly_obj or poly_obj.is_empty or poly_obj.area <= 100.0:
+    if not is_valid or not poly_obj or poly_obj.is_empty or poly_obj.area <= 10.0:
+        # Fallback to direct coords if simplify failed
+        try:
+            poly_fallback = ShapelyPolygon(vertices)
+            if not poly_fallback.is_valid:
+                poly_fallback = poly_fallback.buffer(0)
+            if not poly_fallback.is_empty and poly_fallback.area > 10.0:
+                poly_obj = poly_fallback
+                clean_verts = [[round(float(pt[0]), 2), round(float(pt[1]), 2)] for pt in list(poly_fallback.exterior.coords)]
+                is_valid = True
+        except Exception:
+            pass
+
+    if not is_valid or not poly_obj or poly_obj.is_empty:
         raise HTTPException(status_code=400, detail="Invalid polygon geometry: boundary must form a valid enclosed area.")
 
     min_x, min_y, max_x, max_y = poly_obj.bounds
-    bw = max_x - min_x
-    bh = max_y - min_y
+    bw = max(20.0, max_x - min_x)
+    bh = max(20.0, max_y - min_y)
     gross_sqft = float(poly_obj.area)
 
     # Lock confirmed boundary into project
@@ -242,9 +304,12 @@ def confirm_boundary(project_id: str, req: ConfirmBoundaryRequest, db: Session =
 
     return {
         "projectId": project_id,
+        "status": "LOCKED",
         "isConfirmed": True,
         "isLocked": True,
+        "polygon": clean_verts,
         "polygonVertices": clean_verts,
+        "detectedBoundary": clean_verts,
         "areaSqft": round(gross_sqft, 1),
         "areaSqm": round(gross_sqft * 0.092903, 1),
         "perimeterFt": round(float(poly_obj.length), 1),

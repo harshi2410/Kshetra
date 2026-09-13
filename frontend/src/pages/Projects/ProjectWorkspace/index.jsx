@@ -80,7 +80,7 @@ export default function ProjectWorkspace() {
 
       {/* Clean Header Banner */}
       <div className="page-header-container responsive-stack" style={{
-        padding: '14px 18px',
+        padding: activeTab.id === 'layout' ? '10px 14px' : '14px 18px',
         backgroundColor: 'var(--df-card-bg)',
         border: '1px solid var(--df-card-border)',
         borderRadius: '8px',
@@ -88,13 +88,13 @@ export default function ProjectWorkspace() {
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--df-text)', margin: 0, lineHeight: 1.2 }}>
+            <h1 style={{ fontSize: activeTab.id === 'layout' ? '1.1rem' : '1.25rem', fontWeight: 800, color: 'var(--df-text)', margin: 0, lineHeight: 1.2 }}>
               {project.name}
             </h1>
             <Badge variant={STATUS_BADGE[project.status] || 'default'}>{project.status}</Badge>
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', color: 'var(--df-text-muted)', marginTop: '4px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', color: 'var(--df-text-muted)', marginTop: '3px', flexWrap: 'wrap' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
               <MapPin style={{ width: '12px', height: '12px', color: 'var(--df-accent)' }} /> {project.location}
             </span>
@@ -108,7 +108,7 @@ export default function ProjectWorkspace() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--df-accent)', background: 'var(--df-accent-soft)', padding: '5px 12px', borderRadius: '5px', border: '1px solid rgba(122,30,58,0.15)' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--df-accent)', background: 'var(--df-accent-soft)', padding: '4px 10px', borderRadius: '5px', border: '1px solid rgba(122,30,58,0.15)' }}>
             {activeTab.label} View
           </span>
         </div>
@@ -116,7 +116,7 @@ export default function ProjectWorkspace() {
 
       {/* Horizontal Scrollable Tabs Bar for Fast Navigation */}
       <div className="horizontal-scroll-tabs" style={{
-        padding: '6px',
+        padding: '4px 6px',
         background: 'var(--df-card-bg)',
         border: '1px solid var(--df-card-border)',
         borderRadius: '8px',

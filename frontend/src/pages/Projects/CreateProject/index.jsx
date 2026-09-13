@@ -198,7 +198,7 @@ export default function CreateProject() {
       const payload = {
         ...form,
         grossArea: Number(form.grossArea),
-        status: isDraft ? 'DRAFT' : (layoutFile ? 'LAYOUT_PENDING' : 'DRAFT'),
+        status: isDraft ? 'DRAFT' : (layoutFile ? 'ACTIVE' : 'DRAFT'),
         layoutUploaded: Boolean(layoutFile),
         layoutFile: layoutFile ? {
           name: layoutFile.name,
@@ -209,12 +209,38 @@ export default function CreateProject() {
 
       const newProject = await projectService.createProject(payload);
 
-      // Upload the actual binary layout file to backend storage
-      if (layoutFile && newProject?.id) {
-        await projectService.uploadLayoutFile(newProject.id, layoutFile, form.scaleRatio || 'Not specified');
-      }
+      if (newProject?.id) {
+        // Upload layout blueprint file if present
+        if (layoutFile) {
+          try {
+            await projectService.uploadLayoutFile(newProject.id, layoutFile, form.scaleRatio || 'Not specified');
+          } catch (uploadErr) {
+            console.warn('File upload warning:', uploadErr);
+          }
+        }
 
-      navigate(`/projects/${newProject.id}`);
+        // Auto-detect boundary and generate initial 2D plot layout
+        try {
+          const bRes = await projectService.detectBoundary(newProject.id);
+          const polygon = bRes?.polygon || bRes?.detectedBoundary;
+          if (polygon && polygon.length >= 3) {
+            await projectService.confirmBoundary(newProject.id, { polygonVertices: polygon });
+            const xs = polygon.map(p => p[0]);
+            const ys = polygon.map(p => p[1]);
+            const lenFt = Math.max(50, Math.max(...xs) - Math.min(...xs));
+            const brdFt = Math.max(50, Math.max(...ys) - Math.min(...ys));
+            await projectService.generateLayouts(newProject.id, {
+              lengthFt: lenFt,
+              breadthFt: brdFt,
+              polygonVertices: polygon
+            });
+          }
+        } catch (boundaryErr) {
+          console.warn('Initial boundary generation:', boundaryErr);
+        }
+
+        navigate(`/projects/${newProject.id}`);
+      }
     } catch (err) {
       console.error('Failed to create project:', err);
     } finally {

@@ -72,6 +72,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const [zoomScale, setZoomScale] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef(null);
   const pollingTimerRef = useRef(null);
@@ -126,8 +127,9 @@ export default function LayoutMap({ project, onOpenPlot }) {
       // Load confirmed or detected boundary polygon (Section 26-34)
       try {
         const bRes = await projectService.detectBoundary(project.id);
-        if (bRes && bRes.polygon && bRes.polygon.length >= 3) {
-          setBoundaryGeometry(bRes);
+        const bPoly = bRes?.polygon || bRes?.detectedBoundary || bRes?.polygonVertices;
+        if (bPoly && Array.isArray(bPoly) && bPoly.length >= 3) {
+          setBoundaryGeometry({ ...bRes, polygon: bPoly });
         }
       } catch (e) {
         console.warn('Could not load project boundary:', e);
@@ -262,15 +264,34 @@ export default function LayoutMap({ project, onOpenPlot }) {
   };
 
   // Zoom / Pan handlers
-  const handleZoomIn = () => setZoomScale(prev => Math.min(prev * 1.25, 4.0));
-  const handleZoomOut = () => setZoomScale(prev => Math.max(prev / 1.25, 0.5));
+  const handleZoomIn = () => setZoomScale(prev => Math.min(prev * 1.25, 5.0));
+  const handleZoomOut = () => setZoomScale(prev => Math.max(prev / 1.25, 0.35));
   const handleFitToScreen = () => {
     setZoomScale(1);
     setPanOffset({ x: 0, y: 0 });
   };
 
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.88;
+    setZoomScale(prev => Math.min(Math.max(prev * zoomFactor, 0.35), 5.0));
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+      if (e.key === '+' || e.key === '=') handleZoomIn();
+      if (e.key === '-' || e.key === '_') handleZoomOut();
+      if (e.key === '0') handleFitToScreen();
+      if (e.key === 'f' || e.key === 'F') setIsFullscreen(prev => !prev);
+      if (e.key === 'Escape' && isFullscreen) setIsFullscreen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
   const handleMouseDown = (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 && e.button !== 1) return;
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
   };
@@ -638,10 +659,22 @@ export default function LayoutMap({ project, onOpenPlot }) {
           <button onClick={handleFitToScreen} title="Fit to Screen" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--df-border)', background: 'var(--df-bg)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, color: 'var(--df-text)' }}>
             <Maximize2 style={{ width: '12px', height: '12px' }} /> Fit
           </button>
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Full Screen CAD Mode'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px',
+              borderRadius: '4px', border: '1px solid #38bdf8',
+              background: isFullscreen ? '#0284c7' : 'rgba(56, 189, 248, 0.15)',
+              cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, color: isFullscreen ? '#fff' : '#38bdf8'
+            }}
+          >
+            {isFullscreen ? 'Exit Fullscreen' : '⛶ Fullscreen'}
+          </button>
         </div>
       </div>
 
-      {/* Interactive Layout SVG Render Canvas */}
+      {/* Interactive Layout SVG Render Canvas (Desktop-Optimized Full Height) */}
       <div
         ref={containerRef}
         className="layout-canvas-responsive"
@@ -649,23 +682,70 @@ export default function LayoutMap({ project, onOpenPlot }) {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+        onDoubleClick={handleFitToScreen}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={handleSvgClick}
         style={{
-          position: 'relative',
-          width: '100%',
-          height: 'min(72vh, 580px)',
-          minHeight: '340px',
-          background: '#090e17',
-          border: '1px solid var(--df-card-border)',
-          borderRadius: '8px',
+          position: isFullscreen ? 'fixed' : 'relative',
+          inset: isFullscreen ? 0 : 'auto',
+          zIndex: isFullscreen ? 99999 : 1,
+          width: isFullscreen ? '100vw' : '100%',
+          height: isFullscreen ? '100vh' : 'calc(100vh - 195px)',
+          minHeight: isFullscreen ? '100vh' : '620px',
+          background: '#070c16',
+          border: isFullscreen ? 'none' : '1px solid #1e293b',
+          borderRadius: isFullscreen ? 0 : '8px',
           overflow: 'hidden',
           cursor: isDragging ? 'grabbing' : 'grab',
-          touchAction: 'none'
+          touchAction: 'none',
+          boxShadow: isFullscreen ? 'none' : '0 10px 35px rgba(0,0,0,0.4)'
         }}
       >
+        {/* Floating In-Canvas View Mode Switcher (Top-Left) */}
+        <div style={{
+          position: 'absolute', top: '12px', left: '12px', zIndex: 100,
+          background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(10px)',
+          border: '1px solid #1e293b', borderRadius: '8px', padding: '3px',
+          display: 'flex', alignItems: 'center', gap: '2px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
+        }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_1_INPUT'); }}
+            style={{
+              padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: activeViewMode === 'VIEW_1_INPUT' ? '#2563eb' : 'transparent',
+              color: activeViewMode === 'VIEW_1_INPUT' ? '#ffffff' : '#94a3b8',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Boundary Overlay
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_2_VECTOR'); }}
+            style={{
+              padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: activeViewMode === 'VIEW_2_VECTOR' ? '#2563eb' : 'transparent',
+              color: activeViewMode === 'VIEW_2_VECTOR' ? '#ffffff' : '#94a3b8',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            2D Vector CAD
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_3_HYBRID'); }}
+            style={{
+              padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: activeViewMode === 'VIEW_3_HYBRID' ? '#2563eb' : 'transparent',
+              color: activeViewMode === 'VIEW_3_HYBRID' ? '#ffffff' : '#94a3b8',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Hybrid View
+          </button>
+        </div>
+
         {svgContent || boundaryGeometry?.polygon ? (
           activeViewMode === 'VIEW_1_INPUT' ? (
             <div
@@ -685,25 +765,38 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 <img
                   src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
                   alt="Input Document Underlay"
-                  style={{ maxWidth: '85%', maxHeight: '85%', objectFit: 'contain', opacity: 0.65 }}
+                  style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', opacity: 0.65 }}
                 />
               )}
-              {boundaryGeometry?.polygon && (
-                <svg
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-                  viewBox="0 0 1000 750"
-                >
-                  <polygon
-                    points={boundaryGeometry.polygon.map(p => `${p[0]},${p[1]}`).join(' ')}
-                    fill="rgba(37, 99, 235, 0.18)"
-                    stroke="#2563eb"
-                    strokeWidth="4"
-                  />
-                  {boundaryGeometry.polygon.map((p, i) => (
-                    <circle key={i} cx={p[0]} cy={p[1]} r="6" fill="#38bdf8" stroke="#ffffff" strokeWidth="2" />
-                  ))}
-                </svg>
-              )}
+              {boundaryGeometry?.polygon && (() => {
+                const bxs = boundaryGeometry.polygon.map(p => p[0]);
+                const bys = boundaryGeometry.polygon.map(p => p[1]);
+                const minBx = Math.min(...bxs);
+                const maxBx = Math.max(...bxs);
+                const minBy = Math.min(...bys);
+                const maxBy = Math.max(...bys);
+                const bw = Math.max(50, maxBx - minBx);
+                const bh = Math.max(50, maxBy - minBy);
+                const pad = Math.max(15, bw * 0.08);
+                const vb = `${minBx - pad} ${minBy - pad} ${bw + 2 * pad} ${bh + 2 * pad}`;
+                return (
+                  <svg
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+                    viewBox={vb}
+                    preserveAspectRatio="xMidYMid meet"
+                  >
+                    <polygon
+                      points={boundaryGeometry.polygon.map(p => `${p[0]},${p[1]}`).join(' ')}
+                      fill="rgba(37, 99, 235, 0.18)"
+                      stroke="#2563eb"
+                      strokeWidth="3"
+                    />
+                    {boundaryGeometry.polygon.map((p, i) => (
+                      <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#38bdf8" stroke="#ffffff" strokeWidth="1.5" />
+                    ))}
+                  </svg>
+                );
+              })()}
             </div>
           ) : activeViewMode === 'VIEW_3_HYBRID' ? (
             <div
@@ -723,11 +816,11 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 <img
                   src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
                   alt="Input Document Underlay"
-                  style={{ position: 'absolute', maxWidth: '85%', maxHeight: '85%', objectFit: 'contain', opacity: 0.35 }}
+                  style={{ position: 'absolute', maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', opacity: 0.35 }}
                 />
               )}
               <div
-                style={{ width: '100%', height: '100%', opacity: 0.90, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: '100%', height: '100%', opacity: 0.92, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 dangerouslySetInnerHTML={{ __html: svgContent }}
               />
             </div>
@@ -770,23 +863,85 @@ export default function LayoutMap({ project, onOpenPlot }) {
           </div>
         )}
 
+        {/* Floating CAD Navigation HUD (Bottom-Left) */}
+        <div style={{
+          position: 'absolute', bottom: '12px', left: '12px', zIndex: 100,
+          background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
+          border: '1px solid #1e293b', borderRadius: '8px', padding: '6px 10px',
+          display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+        }}>
+          <button
+            onClick={handleZoomIn}
+            title="Zoom In (+)"
+            style={{ width: '28px', height: '28px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <ZoomIn style={{ width: '14px', height: '14px' }} />
+          </button>
+          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#38bdf8', minWidth: '42px', textAlign: 'center' }}>
+            {Math.round(zoomScale * 100)}%
+          </span>
+          <button
+            onClick={handleZoomOut}
+            title="Zoom Out (-)"
+            style={{ width: '28px', height: '28px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <ZoomOut style={{ width: '14px', height: '14px' }} />
+          </button>
+          <div style={{ width: '1px', height: '18px', background: '#334155' }} />
+          <button
+            onClick={handleFitToScreen}
+            title="Auto-Fit to Screen (Double-click canvas)"
+            style={{ padding: '5px 10px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer' }}
+          >
+            ⛶ Fit 100%
+          </button>
+          <span className="hide-on-mobile" style={{ fontSize: '0.66rem', color: '#64748b', marginLeft: '4px' }}>
+            • Wheel to Zoom • Drag to Pan
+          </span>
+        </div>
+
+        {/* Floating Orientation & Metrics HUD (Bottom-Right) */}
+        <div className="hide-on-mobile" style={{
+          position: 'absolute', bottom: '12px', right: '12px', zIndex: 90,
+          background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(10px)',
+          border: '1px solid #1e293b', borderRadius: '8px', padding: '6px 12px',
+          display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          pointerEvents: 'none'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#38bdf8', fontSize: '0.72rem', fontWeight: 800 }}>
+            <span>🧭 N ↑</span>
+          </div>
+          <div style={{ width: '1px', height: '14px', background: '#334155' }} />
+          <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 600 }}>
+            Scale: 1:100 Metric CAD
+          </div>
+          {layoutModel?.statistics?.totalPlots && (
+            <>
+              <div style={{ width: '1px', height: '14px', background: '#334155' }} />
+              <div style={{ color: '#34d399', fontSize: '0.68rem', fontWeight: 700 }}>
+                {layoutModel.statistics.totalPlots} Plots
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Selected Plot Floating Metadata Drawer */}
         {selectedPlot && (
           <div
             className="floating-plot-drawer"
             style={{
               position: 'absolute', top: '12px', right: '12px', width: 'min(300px, calc(100% - 24px))',
-              background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
-              borderRadius: '8px', boxShadow: '0 8px 30px rgba(0,0,0,0.45)', zIndex: 100, padding: '14px'
+              background: 'rgba(15, 23, 42, 0.94)', backdropFilter: 'blur(10px)', border: '1px solid #334155',
+              borderRadius: '10px', boxShadow: '0 10px 35px rgba(0,0,0,0.6)', zIndex: 100, padding: '14px'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--df-border)', paddingBottom: '8px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: '8px', marginBottom: '10px' }}>
               <div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--df-text)' }}>
+                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#f8fafc' }}>
                   Plot {selectedPlot.plotNumber}
                 </div>
                 <span style={{
-                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700,
+                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700,
                   background: STATUS_STYLE[selectedPlot.status]?.bg || '#dcfce7',
                   color: STATUS_STYLE[selectedPlot.status]?.color || '#15803d',
                   marginTop: '2px', display: 'inline-block'
@@ -796,32 +951,32 @@ export default function LayoutMap({ project, onOpenPlot }) {
               </div>
               <button
                 onClick={() => setSelectedPlot(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--df-text-muted)', padding: '2px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px' }}
               >
                 <X style={{ width: '16px', height: '16px' }} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.76rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '0.74rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--df-text-muted)' }}>Dimensions:</span>
-                <span style={{ fontWeight: 700, color: 'var(--df-text)' }}>{selectedPlot.dimensions}</span>
+                <span style={{ color: '#94a3b8' }}>Dimensions:</span>
+                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{selectedPlot.dimensions}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--df-text-muted)' }}>Calculated Area:</span>
-                <span style={{ fontWeight: 700, color: 'var(--df-text)' }}>{selectedPlot.area} SQFT</span>
+                <span style={{ color: '#94a3b8' }}>Calculated Area:</span>
+                <span style={{ fontWeight: 700, color: '#38bdf8' }}>{selectedPlot.area} SQFT</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--df-text-muted)' }}>Facing Direction:</span>
-                <span style={{ fontWeight: 700, color: 'var(--df-text)' }}>{selectedPlot.facing}</span>
+                <span style={{ color: '#94a3b8' }}>Facing Direction:</span>
+                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{selectedPlot.facing}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--df-text-muted)' }}>Road Access:</span>
-                <span style={{ fontWeight: 700, color: 'var(--df-text)' }}>{selectedPlot.roadName}</span>
+                <span style={{ color: '#94a3b8' }}>Road Access:</span>
+                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{selectedPlot.roadName}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--df-border)', paddingTop: '6px' }}>
-                <span style={{ color: 'var(--df-text-muted)' }}>Estimated Price:</span>
-                <span style={{ fontWeight: 800, color: '#059669' }}>{formatCurrency(selectedPlot.price)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #1e293b', paddingTop: '6px' }}>
+                <span style={{ color: '#94a3b8' }}>Estimated Price:</span>
+                <span style={{ fontWeight: 800, color: '#34d399' }}>{formatCurrency(selectedPlot.price)}</span>
               </div>
             </div>
 
@@ -830,8 +985,8 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 if (onOpenPlot) onOpenPlot(selectedPlot.id);
               }}
               style={{
-                width: '100%', marginTop: '12px', padding: '6px 0', borderRadius: '4px',
-                background: 'var(--df-bg)', border: '1px solid var(--df-border)', color: 'var(--df-text)',
+                width: '100%', marginTop: '12px', padding: '7px 0', borderRadius: '6px',
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', color: '#ffffff',
                 fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
               }}
             >

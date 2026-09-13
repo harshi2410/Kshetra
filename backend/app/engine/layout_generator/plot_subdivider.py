@@ -105,7 +105,26 @@ class PlotSubdivider:
     """Subdivides residual land blocks into clean, road-facing, edge-aware plots."""
 
     @staticmethod
+    def _simplify_plot_polygon(poly: ShapelyPolygon, tolerance: float = 0.5) -> ShapelyPolygon:
+        """Simplifies polygon to remove collinear/micro-step vertices while preserving topology."""
+        if not poly or poly.is_empty or not poly.is_valid:
+            return poly
+        try:
+            simp = poly.simplify(tolerance, preserve_topology=True)
+            if simp.is_valid and not simp.is_empty and simp.area > 20.0:
+                coords = [(round(pt[0], 1), round(pt[1], 1)) for pt in simp.exterior.coords]
+                if len(coords) >= 4:
+                    snap_poly = ShapelyPolygon(coords)
+                    if snap_poly.is_valid and snap_poly.area > 20.0:
+                        return snap_poly
+                return simp
+        except Exception:
+            pass
+        return poly
+
+    @classmethod
     def subdivide(
+        cls,
         land: ParsedLand,
         road_network: RoadNetwork,
         amenities: List[AmenityZone],
@@ -131,15 +150,28 @@ class PlotSubdivider:
             setback_ft=setback_ft,
             road_polygons=road_polys,
             green_spaces=amenity_polys,
-            min_block_area_sqft=min_plot_sqft * 0.70
+            min_block_area_sqft=min_plot_sqft * 0.55
         )
+
+        roads_geom = road_network.shapely_union
+        amenity_shapely_list = []
+        for a in amenities:
+            if hasattr(a, "shapely_polygon"):
+                amenity_shapely_list.append(a.shapely_polygon)
+            elif isinstance(a, dict):
+                pts = a.get("polygon") or a.get("geometry") or []
+                coords = [(pt["x"] if isinstance(pt, dict) else pt.x, pt["y"] if isinstance(pt, dict) else pt.y) for pt in pts]
+                if len(coords) >= 3:
+                    amenity_shapely_list.append(ShapelyPolygon(coords))
+            elif hasattr(a, "polygon"):
+                pts = a.polygon
+                coords = [(pt["x"] if isinstance(pt, dict) else pt.x, pt["y"] if isinstance(pt, dict) else pt.y) for pt in pts]
+                if len(coords) >= 3:
+                    amenity_shapely_list.append(ShapelyPolygon(coords))
+        amenities_geom = unary_union(amenity_shapely_list) if amenity_shapely_list else ShapelyPolygon()
 
         blocks = buildable_res.blocks
         if not blocks:
-            roads_geom = road_network.shapely_union
-            amenities_geom = unary_union([
-                ShapelyPolygon([(p.x, p.y) for p in a.polygon]) for a in amenities if len(a.polygon) >= 3
-            ]) if amenities else ShapelyPolygon()
             obstacles = unary_union([roads_geom, amenities_geom]) if not roads_geom.is_empty else amenities_geom
             usable_fallback = land_poly.difference(obstacles) if not obstacles.is_empty else land_poly
             if usable_fallback.is_empty:
@@ -151,110 +183,190 @@ class PlotSubdivider:
         plots: List[GeneratedPlot] = []
         plot_seq = 1
 
-        # Standard target dimensions
-        target_w = max(min_plot_width_ft, min(max_plot_width_ft, math.sqrt(target_plot_sqft * 0.75)))
+        # Target dimensions (approx 3:4 to 2:3 aspect ratio)
+        target_w = max(min_plot_width_ft, min(max_plot_width_ft, math.sqrt(target_plot_sqft * 0.65)))
         target_d = max(min_plot_depth_ft, target_plot_sqft / target_w)
 
-        for block in blocks_geoms:
-            if block.is_empty or block.area < min_plot_sqft * 0.70:
+        for b_idx, block in enumerate(blocks_geoms):
+            if block.is_empty or block.area < (min_plot_sqft * 0.55):
                 continue
 
-            min_x, min_y, max_x, max_y = block.bounds
-            block_w = max_x - min_x
-            block_h = max_y - min_y
+            if not block.is_valid:
+                block = block.buffer(0)
+            if block.is_empty or block.area < (min_plot_sqft * 0.55):
+                continue
 
-            cols = max(1, int(round(block_w / target_w)))
-            rows = max(1, int(round(block_h / target_d)))
+            b_minx, b_miny, b_maxx, b_maxy = block.bounds
+            block_w = b_maxx - b_minx
+            block_h = b_maxy - b_miny
 
-            step_x = block_w / cols
-            step_y = block_h / rows
+            # Determine row count based on standard plot depths (e.g. 40-50ft single row, 80-100ft double row)
+            if block_h <= (target_d * 1.55):
+                rows = 1
+            else:
+                rows = max(1, int(round(block_h / target_d)))
+
+            row_height = block_h / rows
 
             for r in range(rows):
-                for c in range(cols):
-                    px1 = min_x + (c * step_x)
-                    py1 = min_y + (r * step_y)
-                    px2 = px1 + step_x
-                    py2 = py1 + step_y
+                r_miny = b_miny + (r * row_height)
+                r_maxy = r_miny + row_height
+                row_strip_box = shapely_box(b_minx - 10.0, r_miny, b_maxx + 10.0, r_maxy)
+                row_geom = block.intersection(row_strip_box)
 
-                    cell_box = shapely_box(px1, py1, px2, py2)
-                    # Intersect cell with block (which is already inside land polygon)
-                    plot_geom = cell_box.intersection(block)
+                if row_geom.is_empty or row_geom.area < (min_plot_sqft * 0.50):
+                    continue
 
-                    if plot_geom.is_empty or plot_geom.area < (min_plot_sqft * 0.70):
+                # Handle MultiPolygon row strips
+                sub_strips = [row_geom] if isinstance(row_geom, ShapelyPolygon) else list(row_geom.geoms)
+
+                for strip in sub_strips:
+                    if strip.is_empty or strip.area < (min_plot_sqft * 0.50):
+                        continue
+                    if not strip.is_valid:
+                        strip = strip.buffer(0)
+
+                    s_minx, s_miny, s_maxx, s_maxy = strip.bounds
+                    strip_w = s_maxx - s_minx
+                    if strip_w <= 0:
                         continue
 
-                    # Strict clipping to authentic land polygon (Section 30)
-                    plot_geom = plot_geom.intersection(land_poly)
-                    if plot_geom.is_empty or plot_geom.area < (min_plot_sqft * 0.70):
-                        continue
+                    # Determine column count along strip
+                    cols = max(1, int(round(strip_w / target_w)))
+                    col_width = strip_w / cols
 
-                    # Extract primary polygon
-                    poly_to_use = None
-                    if isinstance(plot_geom, ShapelyPolygon):
-                        poly_to_use = plot_geom
-                    elif isinstance(plot_geom, MultiPolygon):
-                        poly_to_use = max(plot_geom.geoms, key=lambda p: p.area)
+                    row_raw_plots = []
+                    for c in range(cols):
+                        c_minx = s_minx + (c * col_width)
+                        c_maxx = c_minx + col_width
 
-                    if not poly_to_use or poly_to_use.area < (min_plot_sqft * 0.70):
-                        continue
+                        c_box = shapely_box(c_minx, s_miny - 2.0, c_maxx, s_maxy + 2.0)
+                        raw_plot = strip.intersection(c_box)
 
-                    if not poly_to_use.is_valid:
-                        poly_to_use = poly_to_use.buffer(0)
+                        if raw_plot.is_empty:
+                            continue
 
-                    pb_minx, pb_miny, pb_maxx, pb_maxy = poly_to_use.bounds
-                    p_width = max(1.0, pb_maxx - pb_minx)
-                    p_depth = max(1.0, pb_maxy - pb_miny)
+                        if isinstance(raw_plot, MultiPolygon):
+                            raw_plot = max(raw_plot.geoms, key=lambda p: p.area)
 
-                    # Practicality filter (Section 46): reject acute slivers
-                    if p_width < (min_plot_width_ft * 0.60) or p_depth < (min_plot_depth_ft * 0.60):
-                        continue
-                    aspect = p_width / p_depth
-                    if aspect < 0.18 or aspect > 5.5:
-                        continue
+                        if not raw_plot.is_valid:
+                            raw_plot = raw_plot.buffer(0)
 
-                    coords = list(poly_to_use.exterior.coords)
-                    poly_points = [Point(pt[0], pt[1]) for pt in coords[:-1]]
-                    if len(poly_points) < 3:
-                        continue
+                        if not raw_plot.is_empty and raw_plot.area > 20.0:
+                            raw_plot = cls._simplify_plot_polygon(raw_plot, tolerance=0.4)
+                            row_raw_plots.append(raw_plot)
 
-                    # Center & Facing logic
-                    cx = (pb_minx + pb_maxx) / 2.0
-                    cy = (pb_miny + pb_maxy) / 2.0
-                    facing = "EAST" if cx >= (min_x + max_x) / 2.0 else "WEST"
-                    if r == 0:
-                        facing = "SOUTH"
-                    elif r == rows - 1:
-                        facing = "NORTH"
+                    # ─── Sliver Merging & Regularization ───
+                    merged_row_plots = []
+                    for p_geom in row_raw_plots:
+                        if not merged_row_plots:
+                            merged_row_plots.append(p_geom)
+                            continue
 
-                    # Find nearest road name
-                    nearest_road_name = "Internal Avenue"
-                    if road_network.roads:
-                        best_dist = float("inf")
-                        for rd in road_network.roads:
-                            rx = (rd.start.x + rd.end.x) / 2.0
-                            ry = (rd.start.y + rd.end.y) / 2.0
-                            d = math.hypot(cx - rx, cy - ry)
-                            if d < best_dist:
-                                best_dist = d
-                                nearest_road_name = rd.name
+                        if p_geom.area < (min_plot_sqft * 0.70):
+                            # Merge small residual sliver into previous adjacent plot
+                            prev = merged_row_plots[-1]
+                            try:
+                                combined = prev.union(p_geom)
+                                if combined.is_valid and isinstance(combined, ShapelyPolygon):
+                                    merged_row_plots[-1] = cls._simplify_plot_polygon(combined, tolerance=0.5)
+                                elif isinstance(combined, MultiPolygon):
+                                    merged_row_plots[-1] = cls._simplify_plot_polygon(max(combined.geoms, key=lambda g: g.area), tolerance=0.5)
+                                else:
+                                    merged_row_plots.append(p_geom)
+                            except Exception:
+                                merged_row_plots.append(p_geom)
+                        else:
+                            merged_row_plots.append(p_geom)
 
-                    is_corner = (c == 0 or c == cols - 1) and (r == 0 or r == rows - 1)
-                    price = poly_to_use.area * base_rate_per_sqft
+                    # If the very first plot was too small, merge first into second
+                    if len(merged_row_plots) >= 2 and merged_row_plots[0].area < (min_plot_sqft * 0.70):
+                        try:
+                            combined = merged_row_plots[1].union(merged_row_plots[0])
+                            if combined.is_valid and isinstance(combined, ShapelyPolygon):
+                                merged_row_plots[1] = cls._simplify_plot_polygon(combined, tolerance=0.5)
+                                merged_row_plots.pop(0)
+                        except Exception:
+                            pass
 
-                    plot_obj = GeneratedPlot(
-                        plot_id=f"plot-{plot_seq:03d}",
-                        plot_number=f"P-{plot_seq:03d}",
-                        polygon=poly_points,
-                        area_sqft=poly_to_use.area,
-                        width_ft=p_width,
-                        depth_ft=p_depth,
-                        facing=facing,
-                        road_name=nearest_road_name,
-                        is_corner=is_corner,
-                        status="AVAILABLE",
-                        estimated_price=price,
-                    )
-                    plots.append(plot_obj)
-                    plot_seq += 1
+                    # ─── Construct Final Clean GeneratedPlot Objects ───
+                    for c_idx, final_geom in enumerate(merged_row_plots):
+                        if final_geom.is_empty or final_geom.area < (min_plot_sqft * 0.50):
+                            continue
+
+                        # First simplify polygon geometry to remove jagged micro-steps
+                        final_geom = cls._simplify_plot_polygon(final_geom, tolerance=0.4)
+                        if not final_geom.is_valid:
+                            final_geom = final_geom.buffer(0)
+
+                        # Strict containment inside master land polygon
+                        final_geom = final_geom.intersection(land_poly)
+                        if final_geom.is_empty or final_geom.area < (min_plot_sqft * 0.50):
+                            continue
+
+                        # Exact topological subtraction of roads and amenities (guarantees zero overlap)
+                        if not roads_geom.is_empty:
+                            final_geom = final_geom.difference(roads_geom)
+                        if not amenities_geom.is_empty:
+                            final_geom = final_geom.difference(amenities_geom)
+
+                        if isinstance(final_geom, MultiPolygon):
+                            final_geom = max(final_geom.geoms, key=lambda g: g.area)
+
+                        if final_geom.is_empty or final_geom.area < (min_plot_sqft * 0.50):
+                            continue
+
+                        pb_minx, pb_miny, pb_maxx, pb_maxy = final_geom.bounds
+                        p_width = max(1.0, pb_maxx - pb_minx)
+                        p_depth = max(1.0, pb_maxy - pb_miny)
+
+                        # Filter out extreme slivers
+                        aspect = p_width / p_depth
+                        if aspect < 0.10 or aspect > 9.0:
+                            continue
+
+                        coords = list(final_geom.exterior.coords)
+                        poly_points = [Point(round(pt[0], 2), round(pt[1], 2)) for pt in coords[:-1]]
+                        if len(poly_points) < 3:
+                            continue
+
+                        # Interior centroid calculation for label positioning
+                        c_pt = final_geom.representative_point()
+                        cx = c_pt.x
+                        cy = c_pt.y
+
+                        facing = "NORTH" if r == 0 else "SOUTH"
+                        if rows == 1:
+                            facing = "EAST" if cx >= (b_minx + b_maxx) / 2.0 else "WEST"
+
+                        nearest_road_name = "Internal Avenue"
+                        if road_network.roads:
+                            best_dist = float("inf")
+                            for rd in road_network.roads:
+                                rx = (rd.start.x + rd.end.x) / 2.0
+                                ry = (rd.start.y + rd.end.y) / 2.0
+                                d = math.hypot(cx - rx, cy - ry)
+                                if d < best_dist:
+                                    best_dist = d
+                                    nearest_road_name = rd.name
+
+                        is_corner = (c_idx == 0 or c_idx == len(merged_row_plots) - 1) and (r == 0 or r == rows - 1)
+                        price = round(final_geom.area * base_rate_per_sqft, 2)
+
+                        plot_obj = GeneratedPlot(
+                            plot_id=f"plot-{plot_seq:03d}",
+                            plot_number=f"P-{plot_seq:02d}",
+                            polygon=poly_points,
+                            area_sqft=final_geom.area,
+                            width_ft=p_width,
+                            depth_ft=p_depth,
+                            facing=facing,
+                            road_name=nearest_road_name,
+                            is_corner=is_corner,
+                            status="AVAILABLE",
+                            estimated_price=price,
+                        )
+                        plots.append(plot_obj)
+                        plot_seq += 1
 
         return plots

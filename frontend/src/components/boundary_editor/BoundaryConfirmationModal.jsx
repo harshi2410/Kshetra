@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lock,
   Unlock,
@@ -17,7 +17,12 @@ import {
   ZoomIn,
   ZoomOut,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Sliders,
+  ChevronDown,
+  ChevronUp,
+  Settings2,
+  Cpu
 } from 'lucide-react';
 import projectService from '../../services/projectService';
 
@@ -35,6 +40,20 @@ export default function BoundaryConfirmationModal({
   const [activeTool, setActiveTool] = useState('MOVE'); // 'MOVE' | 'ADD' | 'DELETE' | 'DRAW'
   const [detecting, setDetecting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [activeMobileTab, setActiveMobileTab] = useState('CANVAS'); // 'CANVAS' | 'PARAMS' | 'COORDS'
+
+  // Detection Tuning Parameters
+  const [showTuning, setShowTuning] = useState(false);
+  const [detectionMode, setDetectionMode] = useState('AUTO'); // 'AUTO' | 'WHITE_PAGE_DRAWING' | 'SATELLITE_AERIAL' | 'CAD_TECHNICAL' | 'MANUAL'
+  const [epsilonRatio, setEpsilonRatio] = useState(0.012);
+  const [minAreaRatio, setMinAreaRatio] = useState(0.04);
+  const [sensitivity, setSensitivity] = useState(50);
+
+  // Manual Node Edit state
+  const [manualX, setManualX] = useState('');
+  const [manualY, setManualY] = useState('');
+
   const [meta, setMeta] = useState({
     shapeType: 'DETECTING',
     vertexCount: 0,
@@ -45,7 +64,6 @@ export default function BoundaryConfirmationModal({
     concavityRatio: 1.0,
     statusMessage: ''
   });
-  const [isLocked, setIsLocked] = useState(false);
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -55,9 +73,10 @@ export default function BoundaryConfirmationModal({
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
+  const touchStartRef = useRef(null);
 
   // Calculate polygon geometry properties on client
-  const computePolygonMetrics = (pts) => {
+  const computePolygonMetrics = useCallback((pts) => {
     if (!pts || pts.length < 3) {
       return { area: 0, perimeter: 0, shapeType: 'INCOMPLETE' };
     }
@@ -82,36 +101,49 @@ export default function BoundaryConfirmationModal({
       perimeter: Math.round(perimeter),
       shapeType
     };
-  };
+  }, []);
 
-  // Auto-detect boundary on open
-  useEffect(() => {
-    if (!isOpen) return;
+  const fitPolygonToView = useCallback((pts) => {
+    if (!pts || pts.length === 0 || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
 
-    if (initialPolygon && initialPolygon.length >= 3) {
-      setPolygon(initialPolygon);
-      setHistory([initialPolygon]);
-      const metrics = computePolygonMetrics(initialPolygon);
-      setMeta(prev => ({
-        ...prev,
-        shapeType: metrics.shapeType,
-        vertexCount: initialPolygon.length,
-        areaSqft: metrics.area,
-        perimeterFt: metrics.perimeter,
-        statusMessage: 'Loaded active project boundary.'
-      }));
-    } else {
-      handleAutoDetect();
-    }
-  }, [isOpen, projectId]);
+    const polyW = Math.max(50, maxX - minX);
+    const polyH = Math.max(50, maxY - minY);
 
-  const handleAutoDetect = async () => {
+    const pad = Math.min(80, rect.width * 0.15);
+    const availW = Math.max(150, rect.width - pad);
+    const availH = Math.max(150, rect.height - pad);
+
+    const s = Math.min(availW / polyW, availH / polyH, 2.0);
+    setScale(s);
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    setPan({
+      x: rect.width / 2 - cx * s,
+      y: rect.height / 2 - cy * s
+    });
+  }, []);
+
+  const handleAutoDetect = useCallback(async (customParams = null) => {
     setDetecting(true);
     try {
-      const res = await projectService.detectBoundary(projectId);
-      if (res && res.polygon && res.polygon.length >= 3) {
-        // Strip duplicate closing point if present
-        let pts = res.polygon;
+      const params = customParams || {
+        detectionMode,
+        epsilonRatio,
+        minAreaRatio,
+        sensitivity
+      };
+      const res = await projectService.detectBoundary(projectId, params);
+      const boundaryPoints = res?.polygon || res?.detectedBoundary || res?.polygonVertices;
+      if (boundaryPoints && Array.isArray(boundaryPoints) && boundaryPoints.length >= 3) {
+        let pts = boundaryPoints;
         if (pts.length > 3 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) {
           pts = pts.slice(0, -1);
         }
@@ -127,42 +159,40 @@ export default function BoundaryConfirmationModal({
           concavityRatio: res.concavityRatio || 1.0,
           statusMessage: res.statusMessage || 'Detected authentic land boundary contour.'
         });
-        fitPolygonToView(pts);
+        setTimeout(() => fitPolygonToView(pts), 50);
       }
     } catch (err) {
       console.error('Boundary detection error:', err);
     } finally {
       setDetecting(false);
     }
-  };
+  }, [projectId, detectionMode, epsilonRatio, minAreaRatio, sensitivity, fitPolygonToView]);
 
-  const fitPolygonToView = (pts) => {
-    if (!pts || pts.length === 0 || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const xs = pts.map(p => p[0]);
-    const ys = pts.map(p => p[1]);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
+  // Auto-detect boundary on open
+  useEffect(() => {
+    if (!isOpen) return;
 
-    const polyW = Math.max(50, maxX - minX);
-    const polyH = Math.max(50, maxY - minY);
-
-    const pad = 80;
-    const availW = Math.max(200, rect.width - pad);
-    const availH = Math.max(200, rect.height - pad);
-
-    const s = Math.min(availW / polyW, availH / polyH, 2.0);
-    setScale(s);
-
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    setPan({
-      x: rect.width / 2 - cx * s,
-      y: rect.height / 2 - cy * s
-    });
-  };
+    if (initialPolygon && initialPolygon.length >= 3) {
+      let pts = initialPolygon;
+      if (pts.length > 3 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) {
+        pts = pts.slice(0, -1);
+      }
+      setPolygon(pts);
+      setHistory([pts]);
+      const metrics = computePolygonMetrics(pts);
+      setMeta(prev => ({
+        ...prev,
+        shapeType: metrics.shapeType,
+        vertexCount: pts.length,
+        areaSqft: metrics.area,
+        perimeterFt: metrics.perimeter,
+        statusMessage: 'Loaded active project boundary.'
+      }));
+      setTimeout(() => fitPolygonToView(pts), 50);
+    } else {
+      handleAutoDetect();
+    }
+  }, [isOpen, projectId, initialPolygon, computePolygonMetrics, fitPolygonToView, handleAutoDetect]);
 
   const pushHistory = (newPoly) => {
     setHistory(prev => [...prev.slice(-20), newPoly]);
@@ -212,10 +242,17 @@ export default function BoundaryConfirmationModal({
     return [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
   };
 
-  // Canvas Mouse Events
+  // Manual vertex coordinate update
+  const handleUpdateSelectedVertex = () => {
+    if (selectedVertexIndex === null || isNaN(Number(manualX)) || isNaN(Number(manualY))) return;
+    const next = [...polygon];
+    next[selectedVertexIndex] = [Number(manualX), Number(manualY)];
+    pushHistory(next);
+  };
+
+  // Canvas Mouse & Touch Events
   const handleMouseDown = (e) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
-      // Pan canvas
       setIsPanning(true);
       panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
       return;
@@ -224,8 +261,7 @@ export default function BoundaryConfirmationModal({
     if (e.button !== 0) return;
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
 
-    // Check if clicked near a vertex
-    const threshold = 14 / scale;
+    const threshold = 18 / scale;
     const clickedIdx = polygon.findIndex(p => Math.hypot(p[0] - wx, p[1] - wy) <= threshold);
 
     if (activeTool === 'MOVE') {
@@ -233,8 +269,9 @@ export default function BoundaryConfirmationModal({
         setIsDraggingVertex(true);
         setDraggedIndex(clickedIdx);
         setSelectedVertexIndex(clickedIdx);
+        setManualX(polygon[clickedIdx][0]);
+        setManualY(polygon[clickedIdx][1]);
       } else {
-        // Clicked background -> pan
         setIsPanning(true);
         panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
       }
@@ -245,14 +282,12 @@ export default function BoundaryConfirmationModal({
         setSelectedVertexIndex(null);
       }
     } else if (activeTool === 'ADD') {
-      // Find closest edge to insert vertex
       if (polygon.length >= 2) {
         let bestDist = Infinity;
         let insertAfter = -1;
         for (let i = 0; i < polygon.length; i++) {
           const p1 = polygon[i];
           const p2 = polygon[(i + 1) % polygon.length];
-          // Distance from point to segment
           const l2 = (p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2;
           let t = Math.max(0, Math.min(1, ((wx - p1[0]) * (p2[0] - p1[0]) + (wy - p1[1]) * (p2[1] - p1[1])) / l2));
           const projX = p1[0] + t * (p2[0] - p1[0]);
@@ -263,13 +298,12 @@ export default function BoundaryConfirmationModal({
             insertAfter = i;
           }
         }
-        if (bestDist < 40 / scale && insertAfter !== -1) {
+        if (bestDist < 45 / scale && insertAfter !== -1) {
           const next = [...polygon];
           next.splice(insertAfter + 1, 0, [wx, wy]);
           pushHistory(next);
           setSelectedVertexIndex(insertAfter + 1);
         } else {
-          // Append vertex
           pushHistory([...polygon, [wx, wy]]);
         }
       } else {
@@ -294,6 +328,8 @@ export default function BoundaryConfirmationModal({
       const next = [...polygon];
       next[draggedIndex] = [wx, wy];
       setPolygon(next);
+      setManualX(wx);
+      setManualY(wy);
       const metrics = computePolygonMetrics(next);
       setMeta(prev => ({
         ...prev,
@@ -312,6 +348,68 @@ export default function BoundaryConfirmationModal({
     if (isPanning) {
       setIsPanning(false);
     }
+  };
+
+  // Touch Support for Mobile
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const [wx, wy] = screenToWorld(touch.clientX, touch.clientY);
+      const threshold = 26 / scale;
+      const clickedIdx = polygon.findIndex(p => Math.hypot(p[0] - wx, p[1] - wy) <= threshold);
+
+      if (activeTool === 'MOVE' && clickedIdx !== -1) {
+        setIsDraggingVertex(true);
+        setDraggedIndex(clickedIdx);
+        setSelectedVertexIndex(clickedIdx);
+        setManualX(polygon[clickedIdx][0]);
+        setManualY(polygon[clickedIdx][1]);
+      } else {
+        setIsPanning(true);
+        panStartRef.current = { x: touch.clientX - pan.x, y: touch.clientY - pan.y };
+      }
+    } else if (e.touches.length === 2) {
+      // Pinch to zoom
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      touchStartRef.current = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (isPanning) {
+        setPan({
+          x: touch.clientX - panStartRef.current.x,
+          y: touch.clientY - panStartRef.current.y
+        });
+      } else if (isDraggingVertex && draggedIndex !== null) {
+        const [wx, wy] = screenToWorld(touch.clientX, touch.clientY);
+        const next = [...polygon];
+        next[draggedIndex] = [wx, wy];
+        setPolygon(next);
+        setManualX(wx);
+        setManualY(wy);
+      }
+    } else if (e.touches.length === 2 && touchStartRef.current) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const factor = currentDist / touchStartRef.current;
+      setScale(s => Math.max(0.2, Math.min(6.0, s * factor)));
+      touchStartRef.current = currentDist;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (isDraggingVertex && draggedIndex !== null) {
+      pushHistory(polygon);
+      setIsDraggingVertex(false);
+      setDraggedIndex(null);
+    }
+    setIsPanning(false);
+    touchStartRef.current = null;
   };
 
   const handleWheel = (e) => {
@@ -340,26 +438,44 @@ export default function BoundaryConfirmationModal({
 
     setConfirming(true);
     try {
-      // Ensure closure
       const cleanPoly = [...polygon];
       if (cleanPoly[0][0] !== cleanPoly[cleanPoly.length - 1][0] || cleanPoly[0][1] !== cleanPoly[cleanPoly.length - 1][1]) {
         cleanPoly.push(cleanPoly[0]);
       }
 
+      // 1. Confirm and Lock Boundary
       const res = await projectService.confirmBoundary(projectId, {
+        polygonVertices: cleanPoly,
         polygon: cleanPoly
       });
 
-      if (res && res.status === 'LOCKED') {
+      if (res && (res.isLocked || res.status === 'LOCKED' || res.isConfirmed)) {
         setIsLocked(true);
+
+        // 2. Automatically generate 2D layout inside locked polygon
+        try {
+          const xs = cleanPoly.map(p => p[0]);
+          const ys = cleanPoly.map(p => p[1]);
+          const lenFt = Math.max(50, Math.max(...xs) - Math.min(...xs));
+          const brdFt = Math.max(50, Math.max(...ys) - Math.min(...ys));
+
+          await projectService.generateLayouts(projectId, {
+            lengthFt: lenFt,
+            breadthFt: brdFt,
+            polygonVertices: cleanPoly
+          });
+        } catch (genErr) {
+          console.warn('Auto-layout generation warning:', genErr);
+        }
+
         if (onBoundaryConfirmed) {
           onBoundaryConfirmed(res);
         }
         setTimeout(() => {
           onClose();
-        }, 600);
+        }, 800);
       } else {
-        alert(res?.message || 'Failed to confirm land boundary.');
+        alert(res?.message || res?.detail || 'Failed to confirm land boundary. Please verify vertices form an enclosed loop.');
       }
     } catch (err) {
       alert(`Confirmation error: ${err.message}`);
@@ -377,20 +493,22 @@ export default function BoundaryConfirmationModal({
       position: 'fixed',
       inset: 0,
       zIndex: 9999,
-      background: 'rgba(5, 10, 20, 0.85)',
+      background: 'rgba(5, 10, 20, 0.88)',
       backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: '12px',
+      boxSizing: 'border-box'
     }}>
       <div style={{
         background: '#0a101d',
         border: '1px solid #1e293b',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '1200px',
-        height: '92vh',
+        maxWidth: '1280px',
+        height: '94vh',
+        maxHeight: '94vh',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -398,33 +516,35 @@ export default function BoundaryConfirmationModal({
       }}>
         {/* Top Header */}
         <div style={{
-          padding: '16px 24px',
+          padding: '12px 18px',
           borderBottom: '1px solid #1e293b',
           background: '#0f172a',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          gap: '10px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             <div style={{
-              width: '38px',
-              height: '38px',
+              width: '36px',
+              height: '36px',
               borderRadius: '10px',
               background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff'
+              color: '#ffffff',
+              flexShrink: 0
             }}>
-              <ShieldCheck style={{ width: '22px', height: '22px' }} />
+              <ShieldCheck style={{ width: '20px', height: '20px' }} />
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
-                  LAND BOUNDARY VERIFICATION & LOCK (SECTION 26–34)
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#f8fafc', margin: 0, letterSpacing: '0.01em' }}>
+                  LAND BOUNDARY VERIFICATION & LOCK
                 </h2>
                 <span style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.68rem',
                   fontWeight: 800,
                   padding: '2px 8px',
                   borderRadius: '12px',
@@ -435,8 +555,8 @@ export default function BoundaryConfirmationModal({
                   {isLocked ? 'BOUNDARY LOCKED' : 'CONFIRMATION REQUIRED'}
                 </span>
               </div>
-              <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: '3px 0 0 0' }}>
-                The outer boundary is a hard geometric constraint. Layout alternatives will strictly preserve this exact polygon.
+              <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                The outer boundary is a hard geometric constraint. 2D layouts will generate strictly inside this shape.
               </p>
             </div>
           </div>
@@ -453,31 +573,75 @@ export default function BoundaryConfirmationModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              flexShrink: 0
             }}
           >
             <X style={{ width: '16px', height: '16px' }} />
           </button>
         </div>
 
+        {/* Mobile View Tab Switcher (Visible on mobile/tablet) */}
+        <div className="boundary-mobile-tabs" style={{
+          display: 'none',
+          background: '#070c16',
+          borderBottom: '1px solid #1e293b',
+          padding: '6px 12px',
+          gap: '6px'
+        }}>
+          <button
+            onClick={() => setActiveMobileTab('CANVAS')}
+            style={{
+              flex: 1, padding: '7px 4px', fontSize: '0.74rem', fontWeight: 700, borderRadius: '6px',
+              border: activeMobileTab === 'CANVAS' ? '1px solid #3b82f6' : '1px solid #1e293b',
+              background: activeMobileTab === 'CANVAS' ? '#1e3a8a' : '#0f172a',
+              color: activeMobileTab === 'CANVAS' ? '#93c5fd' : '#94a3b8'
+            }}
+          >
+            Canvas & Draw
+          </button>
+          <button
+            onClick={() => setActiveMobileTab('PARAMS')}
+            style={{
+              flex: 1, padding: '7px 4px', fontSize: '0.74rem', fontWeight: 700, borderRadius: '6px',
+              border: activeMobileTab === 'PARAMS' ? '1px solid #3b82f6' : '1px solid #1e293b',
+              background: activeMobileTab === 'PARAMS' ? '#1e3a8a' : '#0f172a',
+              color: activeMobileTab === 'PARAMS' ? '#93c5fd' : '#94a3b8'
+            }}
+          >
+            Tuning & Specs
+          </button>
+          <button
+            onClick={() => setActiveMobileTab('COORDS')}
+            style={{
+              flex: 1, padding: '7px 4px', fontSize: '0.74rem', fontWeight: 700, borderRadius: '6px',
+              border: activeMobileTab === 'COORDS' ? '1px solid #3b82f6' : '1px solid #1e293b',
+              background: activeMobileTab === 'COORDS' ? '#1e3a8a' : '#0f172a',
+              color: activeMobileTab === 'COORDS' ? '#93c5fd' : '#94a3b8'
+            }}
+          >
+            Points ({polygon.length})
+          </button>
+        </div>
+
         {/* Toolbar & Status Strip */}
         <div style={{
-          padding: '10px 24px',
+          padding: '8px 16px',
           background: '#090e17',
           borderBottom: '1px solid #1e293b',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '12px'
+          gap: '8px'
         }}>
           {/* Editor Tools */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
             <button
               onClick={() => setActiveTool('MOVE')}
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 12px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
                 border: activeTool === 'MOVE' ? '1px solid #3b82f6' : '1px solid #334155',
                 background: activeTool === 'MOVE' ? '#1e3a8a' : '#1e293b',
                 color: activeTool === 'MOVE' ? '#93c5fd' : '#cbd5e1',
@@ -485,14 +649,14 @@ export default function BoundaryConfirmationModal({
               }}
               title="Drag and reposition polygon vertices"
             >
-              <Move style={{ width: '14px', height: '14px' }} /> Move Vertex
+              <Move style={{ width: '13px', height: '13px' }} /> Move
             </button>
 
             <button
               onClick={() => setActiveTool('ADD')}
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 12px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
                 border: activeTool === 'ADD' ? '1px solid #3b82f6' : '1px solid #334155',
                 background: activeTool === 'ADD' ? '#1e3a8a' : '#1e293b',
                 color: activeTool === 'ADD' ? '#93c5fd' : '#cbd5e1',
@@ -500,14 +664,14 @@ export default function BoundaryConfirmationModal({
               }}
               title="Click on edge to insert new vertex"
             >
-              <Plus style={{ width: '14px', height: '14px' }} /> Add Point
+              <Plus style={{ width: '13px', height: '13px' }} /> Add Point
             </button>
 
             <button
               onClick={() => setActiveTool('DELETE')}
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 12px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
                 border: activeTool === 'DELETE' ? '1px solid #ef4444' : '1px solid #334155',
                 background: activeTool === 'DELETE' ? '#7f1d1d' : '#1e293b',
                 color: activeTool === 'DELETE' ? '#fca5a5' : '#cbd5e1',
@@ -515,14 +679,14 @@ export default function BoundaryConfirmationModal({
               }}
               title="Click a vertex node to remove it"
             >
-              <Trash2 style={{ width: '14px', height: '14px' }} /> Delete Point
+              <Trash2 style={{ width: '13px', height: '13px' }} /> Delete
             </button>
 
             <button
               onClick={() => setActiveTool('DRAW')}
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 12px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
                 border: activeTool === 'DRAW' ? '1px solid #10b981' : '1px solid #334155',
                 background: activeTool === 'DRAW' ? '#064e3b' : '#1e293b',
                 color: activeTool === 'DRAW' ? '#6ee7b7' : '#cbd5e1',
@@ -530,74 +694,89 @@ export default function BoundaryConfirmationModal({
               }}
               title="Click freely to construct polygon"
             >
-              <PenTool style={{ width: '14px', height: '14px' }} /> Draw Boundary
+              <PenTool style={{ width: '13px', height: '13px' }} /> Draw
             </button>
 
-            <div style={{ width: '1px', height: '22px', background: '#334155', margin: '0 4px' }} />
+            <div style={{ width: '1px', height: '20px', background: '#334155', margin: '0 2px' }} />
 
             <button
               onClick={handleUndo}
               disabled={history.length <= 1}
               style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '7px 10px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '4px',
+                padding: '6px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
                 border: '1px solid #334155', background: '#1e293b', color: history.length > 1 ? '#cbd5e1' : '#64748b',
                 cursor: history.length > 1 ? 'pointer' : 'not-allowed'
               }}
             >
-              <RotateCcw style={{ width: '13px', height: '13px' }} /> Undo
+              <RotateCcw style={{ width: '12px', height: '12px' }} /> Undo
             </button>
 
             <button
               onClick={handleReset}
               style={{
-                padding: '7px 10px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 600,
-                border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1',
-                cursor: 'pointer'
+                padding: '6px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
+                border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
               }}
             >
               Reset
             </button>
 
             <button
-              onClick={handleAutoDetect}
+              onClick={() => handleAutoDetect()}
               disabled={detecting}
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 12px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
                 border: '1px solid #3b82f6', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa',
                 cursor: detecting ? 'wait' : 'pointer'
               }}
             >
-              <Sparkles style={{ width: '14px', height: '14px' }} /> {detecting ? 'Detecting...' : 'Auto-Detect'}
+              <Sparkles style={{ width: '13px', height: '13px' }} /> {detecting ? 'Detecting...' : 'Auto-Detect'}
+            </button>
+
+            <button
+              onClick={() => setShowTuning(!showTuning)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
+                border: showTuning ? '1px solid #38bdf8' : '1px solid #334155',
+                background: showTuning ? '#075985' : '#1e293b',
+                color: showTuning ? '#bae6fd' : '#cbd5e1',
+                cursor: 'pointer'
+              }}
+            >
+              <Sliders style={{ width: '13px', height: '13px' }} />
+              <span>Tuning</span>
+              {showTuning ? <ChevronUp style={{ width: '12px', height: '12px' }} /> : <ChevronDown style={{ width: '12px', height: '12px' }} />}
             </button>
           </div>
 
           {/* View controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <button
               onClick={() => fitPolygonToView(polygon)}
               style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                padding: '5px 8px', borderRadius: '6px', fontSize: '0.72rem',
                 border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
               }}
             >
-              <Maximize2 style={{ width: '12px', height: '12px' }} /> Fit View
+              <Maximize2 style={{ width: '12px', height: '12px' }} /> Fit
             </button>
             <button
-              onClick={() => setScale(s => Math.min(s * 1.2, 5.0))}
+              onClick={() => setScale(s => Math.min(s * 1.25, 5.0))}
               style={{
-                padding: '6px 10px', borderRadius: '6px', border: '1px solid #334155',
+                padding: '5px 8px', borderRadius: '6px', border: '1px solid #334155',
                 background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
               }}
             >
               <ZoomIn style={{ width: '13px', height: '13px' }} />
             </button>
             <button
-              onClick={() => setScale(s => Math.max(s / 1.2, 0.2))}
+              onClick={() => setScale(s => Math.max(s / 1.25, 0.2))}
               style={{
-                padding: '6px 10px', borderRadius: '6px', border: '1px solid #334155',
+                padding: '5px 8px', borderRadius: '6px', border: '1px solid #334155',
                 background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
               }}
             >
@@ -606,15 +785,103 @@ export default function BoundaryConfirmationModal({
           </div>
         </div>
 
+        {/* Optional Detection Parameters Tuning Dropdown / Bar */}
+        {showTuning && (
+          <div style={{
+            background: '#081120',
+            borderBottom: '1px solid #1e3a8a',
+            padding: '12px 20px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '14px',
+            alignItems: 'center'
+          }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#93c5fd', marginBottom: '4px' }}>
+                DETECTION MODE
+              </label>
+              <select
+                value={detectionMode}
+                onChange={e => setDetectionMode(e.target.value)}
+                style={{
+                  width: '100%', height: '30px', background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: '6px', color: '#f8fafc', fontSize: '0.75rem', padding: '0 8px'
+                }}
+              >
+                <option value="AUTO">Auto Detect (All Document Types)</option>
+                <option value="WHITE_PAGE_DRAWING">2D White Page Drawing (Pen/Pencil)</option>
+                <option value="SATELLITE_AERIAL">Satellite / Aerial Image (Color boundary)</option>
+                <option value="CAD_TECHNICAL">CAD / Blueprint Plan (Outer boundary)</option>
+                <option value="MANUAL">Manual Polygon Nodes</option>
+              </select>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.70rem', fontWeight: 700, color: '#93c5fd', marginBottom: '4px' }}>
+                <span>CORNER SIMPLIFICATION (EPSILON)</span>
+                <span>{(epsilonRatio * 100).toFixed(1)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.002"
+                max="0.035"
+                step="0.002"
+                value={epsilonRatio}
+                onChange={e => setEpsilonRatio(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#38bdf8' }}
+              />
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.70rem', fontWeight: 700, color: '#93c5fd', marginBottom: '4px' }}>
+                <span>DETECTION SENSITIVITY</span>
+                <span>{sensitivity}%</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="90"
+                step="5"
+                value={sensitivity}
+                onChange={e => setSensitivity(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#38bdf8' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+              <button
+                onClick={() => handleAutoDetect()}
+                disabled={detecting}
+                style={{
+                  padding: '7px 14px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 800,
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', color: '#fff',
+                  cursor: detecting ? 'wait' : 'pointer', width: '100%'
+                }}
+              >
+                {detecting ? 'Re-detecting...' : 'Apply & Re-detect'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Center Workspace (Canvas + Inspector) */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <div className="boundary-workspace" style={{
+          display: 'flex',
+          flex: 1,
+          overflow: 'hidden',
+          position: 'relative'
+        }}>
           {/* Interactive Canvas Container */}
           <div
             ref={containerRef}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             onWheel={handleWheel}
+            className={`boundary-canvas-pane ${activeMobileTab !== 'CANVAS' ? 'mobile-hidden' : ''}`}
             style={{
               flex: 1,
               background: '#070c16',
@@ -634,11 +901,11 @@ export default function BoundaryConfirmationModal({
               }}
             >
               <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+                <pattern id="grid_boundary" width="36" height="36" patternUnits="userSpaceOnUse">
+                  <path d="M 36 0 L 0 0 0 36" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
                 </pattern>
               </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
+              <rect width="100%" height="100%" fill="url(#grid_boundary)" />
             </svg>
 
             {/* Polygon Render via SVG */}
@@ -659,7 +926,7 @@ export default function BoundaryConfirmationModal({
                     href={imageUrl}
                     x="0"
                     y="0"
-                    opacity="0.55"
+                    opacity="0.5"
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -668,7 +935,7 @@ export default function BoundaryConfirmationModal({
                 {polygon.length >= 3 && (
                   <polygon
                     points={pointsSvgStr}
-                    fill="rgba(37, 99, 235, 0.12)"
+                    fill="rgba(37, 99, 235, 0.14)"
                     stroke="none"
                   />
                 )}
@@ -727,37 +994,43 @@ export default function BoundaryConfirmationModal({
             {/* Canvas Overlay Legend */}
             <div style={{
               position: 'absolute',
-              bottom: '16px',
-              left: '16px',
-              padding: '8px 12px',
+              bottom: '12px',
+              left: '12px',
+              padding: '6px 10px',
               borderRadius: '8px',
-              background: 'rgba(15, 23, 42, 0.85)',
+              background: 'rgba(15, 23, 42, 0.88)',
               backdropFilter: 'blur(4px)',
               border: '1px solid #1e293b',
-              fontSize: '0.72rem',
+              fontSize: '0.70rem',
               color: '#94a3b8',
               display: 'flex',
-              gap: '16px'
+              gap: '12px',
+              flexWrap: 'wrap'
             }}>
-              <span>• Scroll to Zoom ({Math.round(scale * 100)}%)</span>
-              <span>• Alt+Click / Middle-Click to Pan</span>
-              <span>• Tool: <strong>{activeTool}</strong></span>
+              <span>• Zoom: {Math.round(scale * 100)}%</span>
+              <span>• Tool: <strong style={{ color: '#60a5fa' }}>{activeTool}</strong></span>
+              <span>• Touch / Drag points to modify</span>
             </div>
           </div>
 
           {/* Right Geometric Analysis & Confirmation Panel */}
-          <div style={{
-            width: '340px',
-            background: '#090e17',
-            borderLeft: '1px solid #1e293b',
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            overflowY: 'auto'
-          }}>
+          <div
+            className={`boundary-inspector-pane ${activeMobileTab === 'CANVAS' ? 'mobile-hidden' : ''}`}
+            style={{
+              width: '350px',
+              maxWidth: '100%',
+              background: '#090e17',
+              borderLeft: '1px solid #1e293b',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              overflowY: 'auto',
+              boxSizing: 'border-box'
+            }}
+          >
             <div>
-              <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 14px 0' }}>
+              <h3 style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 12px 0' }}>
                 GEOMETRIC CHARACTERISTICS
               </h3>
 
@@ -765,39 +1038,39 @@ export default function BoundaryConfirmationModal({
                 background: '#0f172a',
                 border: '1px solid #1e293b',
                 borderRadius: '10px',
-                padding: '14px',
-                marginBottom: '16px'
+                padding: '12px',
+                marginBottom: '14px'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Shape Geometry:</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Shape Geometry:</span>
                   <span style={{
-                    fontSize: '0.75rem', fontWeight: 800, color: '#60a5fa',
+                    fontSize: '0.74rem', fontWeight: 800, color: '#60a5fa',
                     background: 'rgba(59, 130, 246, 0.1)', padding: '2px 8px', borderRadius: '6px'
                   }}>
                     {meta.shapeType}
                   </span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Enclosed Area:</span>
-                  <strong style={{ fontSize: '0.82rem', color: '#f8fafc' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Enclosed Area:</span>
+                  <strong style={{ fontSize: '0.80rem', color: '#f8fafc' }}>
                     {meta.areaSqft.toLocaleString()} sq.ft ({(meta.areaSqft / 43560).toFixed(2)} acres)
                   </strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Perimeter:</span>
-                  <strong style={{ fontSize: '0.82rem', color: '#f8fafc' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Total Perimeter:</span>
+                  <strong style={{ fontSize: '0.80rem', color: '#f8fafc' }}>
                     {meta.perimeterFt.toLocaleString()} ft
                   </strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Boundary Vertices:</span>
-                  <strong style={{ fontSize: '0.82rem', color: '#38bdf8' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Boundary Vertices:</span>
+                  <strong style={{ fontSize: '0.80rem', color: '#38bdf8' }}>
                     {polygon.length} Points
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Detection Confidence:</span>
-                  <strong style={{ fontSize: '0.82rem', color: '#34d399' }}>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Detection Confidence:</span>
+                  <strong style={{ fontSize: '0.80rem', color: '#34d399' }}>
                     {Math.round(meta.confidence * 100)}%
                   </strong>
                 </div>
@@ -808,37 +1081,96 @@ export default function BoundaryConfirmationModal({
                 background: 'rgba(234, 179, 8, 0.08)',
                 border: '1px solid rgba(234, 179, 8, 0.3)',
                 borderRadius: '10px',
-                padding: '12px 14px',
-                marginBottom: '16px'
+                padding: '10px 12px',
+                marginBottom: '14px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#facc15', fontSize: '0.78rem', fontWeight: 800, marginBottom: '6px' }}>
-                  <AlertTriangle style={{ width: '16px', height: '16px' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#facc15', fontSize: '0.75rem', fontWeight: 800, marginBottom: '4px' }}>
+                  <AlertTriangle style={{ width: '15px', height: '15px' }} />
                   HARD GEOMETRIC LOCK
                 </div>
-                <p style={{ margin: 0, fontSize: '0.73rem', color: '#cbd5e1', lineHeight: '1.5' }}>
-                  Once locked, this outer contour cannot be straightened or converted into a square. All roads, plots, and parks will strictly generate inside this shape.
+                <p style={{ margin: 0, fontSize: '0.71rem', color: '#cbd5e1', lineHeight: '1.45' }}>
+                  Once locked, this outer contour is strictly preserved. All roads, open spaces, and 2D plots will generate inside this exact boundary.
                 </p>
               </div>
 
+              {/* Edit Selected Vertex Manually */}
+              {selectedVertexIndex !== null && polygon[selectedVertexIndex] && (
+                <div style={{
+                  background: '#071529',
+                  border: '1px solid #1e3a8a',
+                  borderRadius: '8px',
+                  padding: '10px',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#60a5fa', marginBottom: '6px' }}>
+                    Edit Node P{selectedVertexIndex + 1} Coordinates:
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '0.66rem', color: '#94a3b8' }}>X (ft):</label>
+                      <input
+                        type="number"
+                        value={manualX}
+                        onChange={e => setManualX(e.target.value)}
+                        style={{ width: '100%', height: '28px', background: '#0f172a', border: '1px solid #334155', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', padding: '0 6px' }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '0.66rem', color: '#94a3b8' }}>Y (ft):</label>
+                      <input
+                        type="number"
+                        value={manualY}
+                        onChange={e => setManualY(e.target.value)}
+                        style={{ width: '100%', height: '28px', background: '#0f172a', border: '1px solid #334155', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', padding: '0 6px' }}
+                      />
+                    </div>
+                    <button
+                      onClick={handleUpdateSelectedVertex}
+                      style={{
+                        height: '28px', marginTop: '14px', padding: '0 10px', background: '#2563eb', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
+                      }}
+                    >
+                      Set
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Vertex Coordinates List */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#94a3b8', marginBottom: '6px' }}>
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', marginBottom: '6px' }}>
                   Polygon Coordinate Nodes:
                 </div>
                 <div style={{
-                  maxHeight: '140px',
+                  maxHeight: '130px',
                   overflowY: 'auto',
                   background: '#030712',
                   border: '1px solid #1e293b',
                   borderRadius: '6px',
-                  padding: '6px 10px',
-                  fontSize: '0.70rem',
+                  padding: '6px 8px',
+                  fontSize: '0.68rem',
                   fontFamily: 'monospace',
                   color: '#94a3b8'
                 }}>
                   {polygon.map((p, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                      <span style={{ color: '#60a5fa' }}>P{i + 1}:</span>
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setSelectedVertexIndex(i);
+                        setManualX(p[0]);
+                        setManualY(p[1]);
+                      }}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '3px 4px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        background: selectedVertexIndex === i ? 'rgba(59, 130, 246, 0.25)' : 'transparent',
+                        color: selectedVertexIndex === i ? '#93c5fd' : '#94a3b8'
+                      }}
+                    >
+                      <span style={{ color: selectedVertexIndex === i ? '#38bdf8' : '#60a5fa' }}>P{i + 1}:</span>
                       <span>({p[0]}, {p[1]})</span>
                     </div>
                   ))}
@@ -847,18 +1179,18 @@ export default function BoundaryConfirmationModal({
             </div>
 
             {/* Bottom Actions */}
-            <div>
+            <div style={{ marginTop: '10px' }}>
               <button
                 onClick={handleConfirmAndLock}
                 disabled={confirming || polygon.length < 3}
                 style={{
                   width: '100%',
-                  padding: '12px',
+                  padding: '11px',
                   borderRadius: '10px',
                   border: 'none',
                   background: isLocked ? '#10b981' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                   color: '#ffffff',
-                  fontSize: '0.86rem',
+                  fontSize: '0.84rem',
                   fontWeight: 800,
                   display: 'flex',
                   alignItems: 'center',
@@ -869,20 +1201,20 @@ export default function BoundaryConfirmationModal({
                 }}
               >
                 {confirming ? (
-                  <span>Locking Geometry...</span>
+                  <span>Locking Geometry & Generating 2D Plots...</span>
                 ) : isLocked ? (
                   <>
-                    <CheckCircle2 style={{ width: '18px', height: '18px' }} /> Boundary Confirmed & Locked
+                    <CheckCircle2 style={{ width: '16px', height: '16px' }} /> Boundary Confirmed & Plots Generated
                   </>
                 ) : (
                   <>
-                    <Lock style={{ width: '18px', height: '18px' }} /> Confirm & Lock Boundary
+                    <Lock style={{ width: '16px', height: '16px' }} /> Confirm & Generate 2D Plots
                   </>
                 )}
               </button>
 
-              <p style={{ textAlign: 'center', fontSize: '0.71rem', color: '#64748b', margin: '8px 0 0 0' }}>
-                Required before generating UDCPR plot layouts.
+              <p style={{ textAlign: 'center', fontSize: '0.68rem', color: '#64748b', margin: '6px 0 0 0' }}>
+                Generates UDCPR compliant plot layout inside this exact boundary.
               </p>
             </div>
           </div>

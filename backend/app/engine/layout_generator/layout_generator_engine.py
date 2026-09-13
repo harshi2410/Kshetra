@@ -347,21 +347,20 @@ def render_clean_svg(
     bw = max_x - min_x
     bh = max_y - min_y
 
-    margin_x = max(55.0, bw * 0.08)
-    margin_y_top = max(45.0, bh * 0.08)
-    margin_y_bottom = max(75.0, bh * 0.16)
+    margin_x = max(10.0, bw * 0.02)
+    margin_y_top = max(10.0, bh * 0.02)
+    margin_y_bottom = max(24.0, bh * 0.05)
 
     canvas_min_x = min_x - margin_x
     canvas_min_y = min_y - margin_y_top
-    # Ensure canvas width accommodates legend if layout is narrow
-    canvas_w = max(bw + 2 * margin_x, 480.0)
+    canvas_w = bw + 2 * margin_x
     canvas_h = bh + margin_y_top + margin_y_bottom
 
     svg_parts = []
     svg_parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="{canvas_min_x:.1f} {canvas_min_y:.1f} {canvas_w:.1f} {canvas_h:.1f}" '
-        f'width="100%" height="100%" '
+        f'width="100%" height="100%" preserveAspectRatio="xMidYMid meet" '
         f'style="background: #090e17; font-family: Inter, system-ui, -apple-system, sans-serif;">'
     )
 
@@ -535,8 +534,22 @@ def render_clean_svg(
         ys = [pt["y"] for pt in pts]
         pw = max(xs) - min(xs)
         ph = max(ys) - min(ys)
-        cx = sum(xs) / len(xs)
-        cy = sum(ys) / len(ys)
+
+        # True interior centroid for flawless label positioning inside irregular shapes
+        c_dict = p.get("centroid") if isinstance(p, dict) else getattr(p, "centroid", None)
+        if c_dict and hasattr(c_dict, "x") and hasattr(c_dict, "y"):
+            cx, cy = c_dict.x, c_dict.y
+        elif isinstance(c_dict, dict) and "x" in c_dict and "y" in c_dict:
+            cx, cy = c_dict["x"], c_dict["y"]
+        else:
+            try:
+                poly_repr = ShapelyPolygon([(pt["x"], pt["y"]) for pt in pts])
+                rp = poly_repr.representative_point() if poly_repr.is_valid else None
+                cx = rp.x if rp else sum(xs) / len(xs)
+                cy = rp.y if rp else sum(ys) / len(ys)
+            except Exception:
+                cx = sum(xs) / len(xs)
+                cy = sum(ys) / len(ys)
 
         plot_no = str(p.get("plotNumber") if isinstance(p, dict) else p.plot_number)
         w_ft = float(p.get("widthFt", 30.0) if isinstance(p, dict) else p.width_ft)
