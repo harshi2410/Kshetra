@@ -6,6 +6,15 @@ Consumes SEMANTIC_SEGMENTATION_MASKS (SegFormer class 2 ROAD, class 4 GREEN_SPAC
 or UNIVERSAL_PRIMITIVES and GEOMETRY_RELATIONSHIP_GRAPH.
 """
 
+import os
+import sys
+from pathlib import Path
+
+# Ensure backend directory is in sys.path for direct script execution
+backend_dir = Path(__file__).resolve().parent.parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 import logging
 from typing import Dict, Any, List, Set, Optional, Tuple
 from shapely.geometry import Polygon as ShapelyPolygon, LineString, Point as ShapelyPoint, MultiPolygon
@@ -211,7 +220,9 @@ class RoadDetectionEngine:
             "artifactType": "ROAD_NETWORK",
             "totalRoadsCount": len(roads),
             "totalLength": round(total_length, 2),
+            "totalRoadLength": round(total_length, 2),
             "intersectionsCount": len(intersections),
+            "totalIntersectionsCount": len(intersections),
             "intersections": intersections,
             "greenSpacesCount": len(green_spaces),
             "greenSpaces": green_spaces,
@@ -223,5 +234,129 @@ class RoadDetectionEngine:
         logger.info(f"RoadDetectionEngine completed: {len(roads)} roads, {len(green_spaces)} green spaces, {len(obstacles)} obstacles")
         return result
 
+    def detect_road_network(
+        self,
+        universal_primitives_dict: Optional[Dict[str, Any]] = None,
+        geometry_graph_dict: Optional[Dict[str, Any]] = None,
+        segmentation_masks_dict: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Alias for detect_roads providing backwards compatibility.
+        """
+        return self.detect_roads(
+            universal_primitives_dict=universal_primitives_dict,
+            geometry_graph_dict=geometry_graph_dict,
+            segmentation_masks_dict=segmentation_masks_dict
+        )
+
 
 road_detection_engine_instance = RoadDetectionEngine()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    print("=" * 70)
+    print("  LANDOS ROAD & FEATURE DETECTION ENGINE (TASK-045)")
+    print("=" * 70)
+
+    # 1. DEMO: Universal Primitives Detection & Connectivity
+    print("\n--- 1. Testing Universal Primitives Road Detection & Topology ---")
+    sample_primitives = {
+        "universalPrimitives": [
+            {
+                "id": "road-corridor-1",
+                "primitiveType": "POLYGON",
+                "candidateType": "ROAD_CANDIDATE",
+                "isClosed": True,
+                "boundingBox": [100.0, 400.0, 900.0, 440.0],  # Horizontal 800 ft long, 40 ft wide
+                "area": 32000.0,
+                "perimeter": 1680.0
+            },
+            {
+                "id": "road-corridor-2",
+                "primitiveType": "POLYGON",
+                "candidateType": "ROAD_CANDIDATE",
+                "isClosed": True,
+                "boundingBox": [480.0, 100.0, 520.0, 700.0],  # Vertical 600 ft long, 40 ft wide
+                "area": 24000.0,
+                "perimeter": 1280.0
+            },
+            {
+                "id": "plot-candidate-1",
+                "primitiveType": "POLYGON",
+                "candidateType": "PLOT_CANDIDATE",
+                "isClosed": True,
+                "boundingBox": [150.0, 150.0, 350.0, 350.0],
+                "area": 40000.0,
+                "perimeter": 800.0
+            }
+        ]
+    }
+
+    sample_graph = {
+        "edges": [
+            {
+                "sourceId": "road-corridor-1",
+                "targetId": "road-corridor-2",
+                "relationshipType": "INTERSECTS",
+                "distance": 0.0
+            }
+        ]
+    }
+
+    res_prim = road_detection_engine_instance.detect_road_network(sample_primitives, sample_graph)
+    print(f"[*] Artifact Type          : {res_prim['artifactType']}")
+    print(f"[*] Total Roads Detected   : {res_prim['totalRoadsCount']}")
+    print(f"[*] Total Road Length      : {res_prim['totalRoadLength']} ft")
+    print(f"[*] Total Intersections    : {res_prim['totalIntersectionsCount']} at {res_prim['intersections']}")
+    for r in res_prim["roads"]:
+        print(f"    - {r['roadId']}: width={r['width']}ft, length={r['length']}ft, centerline={r['centerline']}, conns={r['connectedRoads']}")
+
+    assert res_prim["totalRoadsCount"] == 2, "Expected 2 road corridors"
+    assert res_prim["totalIntersectionsCount"] >= 1, "Expected at least 1 intersection"
+    assert res_prim["roads"][0]["width"] == 40.0, "Expected road width 40.0"
+    print("--> Universal Primitives verification: PASSED [OK]")
+
+    # 2. DEMO: Semantic Segmentation Masks (Roads, Green Spaces, Obstacles)
+    print("\n--- 2. Testing Semantic Segmentation Detection ---")
+    sample_seg = {
+        "semanticRegions": [
+            {
+                "className": "ROAD",
+                "polygon": [[0.0, 100.0], [500.0, 100.0], [500.0, 130.0], [0.0, 130.0], [0.0, 100.0]]
+            },
+            {
+                "className": "GREEN_SPACE",
+                "polygon": [[50.0, 200.0], [200.0, 200.0], [200.0, 350.0], [50.0, 350.0], [50.0, 200.0]]
+            },
+            {
+                "className": "OBSTACLE",
+                "polygon": [[300.0, 200.0], [400.0, 200.0], [400.0, 300.0], [300.0, 300.0], [300.0, 200.0]]
+            }
+        ]
+    }
+
+    res_seg = road_detection_engine_instance.detect_roads(segmentation_masks_dict=sample_seg)
+    print(f"[*] Roads Detected         : {res_seg['totalRoadsCount']}")
+    print(f"[*] Green Spaces Detected  : {res_seg['greenSpacesCount']}")
+    print(f"[*] Obstacles Detected     : {res_seg['obstaclesCount']}")
+    for g in res_seg["greenSpaces"]:
+        print(f"    - {g['zoneId']}: {g['name']}, area={g['areaSqft']} sqft")
+    for o in res_seg["obstacles"]:
+        print(f"    - {o['id']}: {o['name']}, area={o['areaSqft']} sqft")
+
+    assert res_seg["totalRoadsCount"] == 1, "Expected 1 road from segmentation"
+    assert res_seg["greenSpacesCount"] == 1, "Expected 1 green space"
+    assert res_seg["obstaclesCount"] == 1, "Expected 1 obstacle"
+    print("--> Semantic Segmentation verification: PASSED [OK]")
+
+    # 3. DEMO: Empty Layout Safety
+    print("\n--- 3. Testing Empty Layout Safety Guarantee ---")
+    res_empty = road_detection_engine_instance.detect_road_network({}, {})
+    assert res_empty["totalRoadsCount"] == 0
+    assert res_empty["totalIntersectionsCount"] == 0
+    print("--> Empty input resilience verification: PASSED [OK]")
+
+    print("\n" + "=" * 70)
+    print("  ALL ROAD DETECTION ENGINE TESTS & EXECUTIONS PASSED SUCCESSFULLY!")
+    print("=" * 70)

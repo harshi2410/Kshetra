@@ -193,3 +193,73 @@ class SatelliteBoundaryDetector:
 
 
 satellite_boundary_detector_instance = SatelliteBoundaryDetector()
+
+
+if __name__ == "__main__":
+    print("=" * 70)
+    print(" [SATELLITE ENGINE] LandOS Satellite Boundary Detection - Runner")
+    print("=" * 70)
+
+    detector = SatelliteBoundaryDetector()
+
+    # 1. Aerial / Satellite Image Classification Check
+    h, w = 600, 800
+    satellite_sample = np.full((h, w, 3), (35, 100, 50), dtype=np.uint8)  # Green vegetation / earth tone
+    cad_sample = np.full((h, w, 3), 255, dtype=np.uint8)  # White paper / CAD background
+
+    is_sat = detector.is_satellite_or_aerial(satellite_sample)
+    is_cad = detector.is_satellite_or_aerial(cad_sample)
+    print(f"\n[Test 1] Aerial / Satellite Classification:")
+    print(f"  * Satellite Image Classified Correctly: {is_sat} (expected True)")
+    print(f"  * Plain White Page Classified Correctly: {not is_cad} (expected False)")
+    assert is_sat is True, "Satellite image failed classification"
+    assert is_cad is False, "CAD image incorrectly classified as satellite"
+    print("  -> PASSED")
+
+    # 2. Multi-Color Marker Detection: Blue Outline
+    img_blue = np.full((h, w, 3), (35, 95, 45), dtype=np.uint8)
+    blue_pts = np.array([[120, 80], [680, 110], [620, 500], [180, 460]], np.int32)
+    # BGR for blue outline: (240, 60, 20) -> HSV falls in Blue range
+    cv2.polylines(img_blue, [blue_pts], isClosed=True, color=(240, 60, 20), thickness=6)
+
+    verts_blue, conf_blue, msg_blue, feat_blue = detector.extract_marked_boundary(img_blue)
+    print(f"\n[Test 2] Blue Marker Boundary Extraction:")
+    print(f"  * Status Message: {msg_blue}")
+    print(f"  * Confidence: {conf_blue}")
+    print(f"  * Vertices Extracted: {len(verts_blue) if verts_blue else 0}")
+    print(f"  * Coordinates: {verts_blue}")
+    print(f"  * Green Coverage: {feat_blue.get('greenCoveragePercent')}%")
+    assert verts_blue is not None and len(verts_blue) >= 4, "Failed to extract blue boundary"
+    assert conf_blue >= 0.90, f"Expected high confidence, got {conf_blue}"
+    print("  -> PASSED")
+
+    # 3. Multi-Color Marker Detection: Red Outline
+    img_red = np.full((h, w, 3), (40, 90, 50), dtype=np.uint8)
+    red_pts = np.array([[150, 100], [650, 130], [590, 480], [210, 440]], np.int32)
+    # BGR for red outline: (20, 20, 220) -> HSV falls in Red range
+    cv2.polylines(img_red, [red_pts], isClosed=True, color=(20, 20, 220), thickness=6)
+
+    verts_red, conf_red, msg_red, feat_red = detector.extract_marked_boundary(img_red)
+    print(f"\n[Test 3] Red Marker Boundary Extraction:")
+    print(f"  * Status Message: {msg_red}")
+    print(f"  * Confidence: {conf_red}")
+    print(f"  * Vertices Extracted: {len(verts_red) if verts_red else 0}")
+    assert verts_red is not None and len(verts_red) >= 4, "Failed to extract red boundary"
+    assert conf_red >= 0.80, f"Expected confidence >= 0.80, got {conf_red}"
+    print("  -> PASSED")
+
+    # 4. Low-Confidence Safety Warning on Unmarked Image
+    img_unmarked = np.full((h, w, 3), 128, dtype=np.uint8)
+    verts_un, conf_un, msg_un, feat_un = detector.extract_marked_boundary(img_unmarked)
+    print(f"\n[Test 4] Low Confidence Warning State:")
+    print(f"  * Status Message: {msg_un}")
+    print(f"  * Confidence: {conf_un}")
+    assert verts_un is None, "Unmarked image should not return boundary vertices"
+    assert conf_un <= 0.30, "Unmarked image should have low confidence"
+    assert "Boundary confidence is low" in msg_un
+    print("  -> PASSED")
+
+    print("\n" + "=" * 70)
+    print(" [SUCCESS] ALL SATELLITE BOUNDARY DETECTOR TESTS PASSED!")
+    print("=" * 70)
+

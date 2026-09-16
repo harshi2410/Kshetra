@@ -328,6 +328,23 @@ export const projectService = {
   },
 
   /**
+   * Fetch all plot inventory for a project from backend DB
+   * API Endpoint: GET /api/v1/projects/:projectId/plots
+   */
+  async getProjectPlots(projectId) {
+    try {
+      const res = await apiFetch(`/${projectId}/plots`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch (err) {
+      console.warn(`FastAPI backend getProjectPlots failed:`, err.message);
+      return [];
+    }
+  },
+
+  /**
    * Update plot inventory status (AVAILABLE, RESERVED, SOLD, BLOCKED)
    * API Endpoint: PATCH /api/v1/projects/:projectId/plots/:plotId
    */

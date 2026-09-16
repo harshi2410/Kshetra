@@ -105,8 +105,17 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--df-border)' }}>
           <div>
-            <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--df-text)', fontFamily: 'monospace' }}>Plot {plot.plotNo}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted)', marginTop: '1px' }}>{plot.area} sq.ft · {plot.facing} facing{plot.isCorner ? ' · Corner' : ''}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--df-text)', fontFamily: 'monospace' }}>Plot {plot.plotNo}</span>
+              {plot.isCorner && (
+                <span style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'rgba(122,30,58,0.1)', color: 'var(--df-accent)', border: '1px solid rgba(122,30,58,0.25)', borderRadius: '3px', fontWeight: 800 }}>
+                  CORNER
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--df-text-muted)', marginTop: '2px' }}>
+              {plot.areaSqft || plot.area} sq.ft ({plot.areaSqm || Math.round((plot.areaSqft || plot.area) * 0.0929)} m²) · {plot.facing} facing
+            </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--df-text-muted)', padding: '4px' }}>
             <X style={{ width: '18px', height: '18px' }} />
@@ -118,10 +127,17 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
 
           {/* Plot Info strip (read-only) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            {[['Dimensions', plot.dimensions], ['Original Price', formatCurrency(plot.price)]].map(([k, v]) => (
+            {[
+              ['Dimensions', plot.dimensions],
+              ['Plot Area', `${(plot.areaSqft || plot.area).toLocaleString()} sq.ft (${plot.areaSqm || Math.round((plot.areaSqft || plot.area) * 0.0929)} m²)`],
+              ['Facing Direction', plot.facing],
+              ['Road Frontage', plot.roadName || 'Internal Road'],
+              ['Plot Type', plot.isCorner ? 'Corner Plot (Dual Frontage)' : 'Standard Parcel'],
+              ['Base Rate', `₹${(plot.ratePerSqft || Math.round(plot.price / (plot.areaSqft || plot.area || 1))).toLocaleString()} / sq.ft`],
+            ].map(([k, v]) => (
               <div key={k} style={{ padding: '8px 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px' }}>
                 <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--df-text-muted)', marginBottom: '2px' }}>{k}</div>
-                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--df-text)' }}>{v}</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--df-text)', wordBreak: 'break-word' }}>{v}</div>
               </div>
             ))}
           </div>
