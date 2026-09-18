@@ -42,7 +42,22 @@ class ProjectService:
     def get_project_plots(self, db: Session, project_id: str) -> List[Dict[str, Any]]:
         return plot_inventory_service_instance.get_project_plots(db, project_id)
 
+    def get_plot_by_id(self, db: Session, project_id: str, plot_id: str) -> Dict[str, Any]:
+        return plot_inventory_service_instance.get_plot_by_id(db, project_id, plot_id)
+
     def update_project_plot(self, db: Session, project_id: str, plot_id: str, payload: PlotUpdate) -> Dict[str, Any]:
         return plot_inventory_service_instance.update_project_plot(db, project_id, plot_id, payload)
+
+    def book_plot(self, db: Session, project_id: str, plot_id: str, payload: Any) -> Dict[str, Any]:
+        return plot_inventory_service_instance.book_plot(db, project_id, plot_id, payload)
+
+    def update_booking(self, db: Session, project_id: str, booking_id: str, payload: Any) -> Dict[str, Any]:
+        return plot_inventory_service_instance.update_booking(db, project_id, booking_id, payload)
+
+    def cancel_booking(self, db: Session, project_id: str, booking_id: str) -> Dict[str, Any]:
+        return plot_inventory_service_instance.cancel_booking(db, project_id, booking_id)
+
+    def get_project_bookings(self, db: Session, project_id: str) -> List[Dict[str, Any]]:
+        return plot_inventory_service_instance.get_project_bookings(db, project_id)
 
 project_service_instance = ProjectService()

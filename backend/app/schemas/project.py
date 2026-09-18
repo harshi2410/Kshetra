@@ -201,6 +201,7 @@ class CLMBuildResponse(BaseModel):
     layoutId: str
     statistics: Dict[str, Any]
 
+
 class PlotUpdate(BaseModel):
 
     status: Optional[str] = None
@@ -208,6 +209,61 @@ class PlotUpdate(BaseModel):
     customerId: Optional[str] = None
     reservationDate: Optional[str] = None
     basePrice: Optional[float] = None
+
+
+class PlotBookingCreate(BaseModel):
+
+    customerName: str
+    customerPhone: str
+    customerEmail: Optional[str] = None
+    customerAddress: Optional[str] = None
+    bookingDate: Optional[str] = None
+    totalAmount: Optional[float] = None
+    bookingAmount: float
+    paidAmount: Optional[float] = None
+    paymentStatus: Optional[str] = "PARTIAL"
+    paymentMethod: Optional[str] = "UPI"
+    transactionId: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PlotBookingUpdate(BaseModel):
+    customerName: Optional[str] = None
+    customerPhone: Optional[str] = None
+    customerEmail: Optional[str] = None
+    customerAddress: Optional[str] = None
+    bookingDate: Optional[str] = None
+    bookingAmount: Optional[float] = None
+    paidAmount: Optional[float] = None
+    paymentStatus: Optional[str] = None
+    paymentMethod: Optional[str] = None
+    transactionId: Optional[str] = None
+    notes: Optional[str] = None
+    bookingStatus: Optional[str] = None
+
+
+class PlotBookingResponse(BaseModel):
+    id: str
+    projectId: str
+    plotId: str
+    plotNumber: Optional[str] = None
+    customerName: str
+    customerPhone: str
+    customerEmail: Optional[str] = None
+    customerAddress: Optional[str] = None
+    bookingDate: str
+    totalAmount: float
+    bookingAmount: float
+    paidAmount: float
+    remainingAmount: float
+    paymentStatus: str
+    paymentMethod: str
+    transactionId: Optional[str] = None
+    notes: Optional[str] = None
+    bookingStatus: str
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
 
 class PlotResponse(BaseModel):
     id: str
@@ -225,6 +281,11 @@ class PlotResponse(BaseModel):
     customerId: Optional[str] = None
     reservationDate: Optional[str] = None
     updatedAt: Optional[str] = None
+    dimensions: Optional[str] = None
+    roadName: Optional[str] = None
+    isCorner: Optional[bool] = False
+    activeBooking: Optional[PlotBookingResponse] = None
+
 
 
 

@@ -41,6 +41,7 @@ class Project(Base):
     artifacts = relationship("LayoutProcessingArtifact", cascade="all, delete-orphan", back_populates="project")
     plots = relationship("ProjectPlot", cascade="all, delete-orphan", back_populates="project")
     generated_variants = relationship("GeneratedLayoutVariant", cascade="all, delete-orphan", back_populates="project")
+    bookings = relationship("PlotBooking", cascade="all, delete-orphan", back_populates="project")
 
 
 
@@ -179,6 +180,7 @@ class ProjectPlot(Base):
 
     project = relationship("Project", back_populates="plots")
     layout_source = relationship("LayoutSource")
+    bookings = relationship("PlotBooking", cascade="all, delete-orphan", back_populates="plot", order_by="desc(PlotBooking.created_at)")
 
 
 class GeneratedLayoutVariant(Base):
@@ -198,6 +200,35 @@ class GeneratedLayoutVariant(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     project = relationship("Project", back_populates="generated_variants")
+
+
+class PlotBooking(Base):
+    """Persistent booking and customer records tied to a specific project plot."""
+    __tablename__ = 'plot_bookings'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id = Column(String(36), ForeignKey('projects.id', ondelete='CASCADE'), nullable=False, index=True)
+    plot_id = Column(String(36), ForeignKey('project_plots.id', ondelete='CASCADE'), nullable=False, index=True)
+    customer_name = Column(String(255), nullable=False)
+    customer_phone = Column(String(50), nullable=False)
+    customer_email = Column(String(255), nullable=True)
+    customer_address = Column(Text, nullable=True)
+    booking_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    total_amount = Column(Numeric(14, 2), nullable=False)
+    booking_amount = Column(Numeric(14, 2), nullable=False)
+    paid_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    remaining_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    payment_status = Column(String(50), nullable=False, default='PARTIAL')  # PAID, PARTIAL, PENDING
+    payment_method = Column(String(50), nullable=False, default='UPI')      # Cash, UPI, Bank Transfer, Cheque, Other
+    transaction_id = Column(String(150), nullable=True)
+    notes = Column(Text, nullable=True)
+    booking_status = Column(String(50), nullable=False, default='BOOKED', index=True)  # BOOKED, CANCELLED
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    project = relationship("Project", back_populates="bookings")
+    plot = relationship("ProjectPlot", back_populates="bookings")
+
 
 
 

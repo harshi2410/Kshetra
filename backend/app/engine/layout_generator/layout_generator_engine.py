@@ -664,19 +664,27 @@ def render_clean_svg(
         )
 
         p_pts_str = " ".join(f"{pt['x']:.1f},{pt['y']:.1f}" for pt in pts)
-        fill_color = "rgba(245, 158, 11, 0.14)" if is_corner else "rgba(16, 185, 129, 0.10)"
-        stroke_color = "#f59e0b" if is_corner else "#10b981"
+        is_booked = str(status).upper() == "BOOKED"
+        if is_booked:
+            fill_color = "rgba(239, 68, 68, 0.28)"
+            stroke_color = "#ef4444"
+            status_label = "BOOKED"
+        else:
+            fill_color = "rgba(245, 158, 11, 0.16)" if is_corner else "rgba(34, 197, 94, 0.18)"
+            stroke_color = "#f59e0b" if is_corner else "#22c55e"
+            status_label = "AVAILABLE"
 
         plot_svg = [
-            f'<g id="{plot_id}" class="landos-plot-group" style="cursor: pointer;">',
+            f'<g id="{plot_id}" data-plot-id="{plot_id}" data-plot-number="{plot_no}" data-status="{status_label}" class="landos-plot-group" style="cursor: pointer;">',
             f'  <title>{tooltip_text}</title>',
-            f'  <polygon points="{p_pts_str}" fill="{fill_color}" stroke="{stroke_color}" stroke-width="0.8" class="landos-plot"/>',
-            f'  <text x="{cx:.1f}" y="{y1:.1f}" class="plot-num" font-size="{font_no:.1f}" text-anchor="middle">{plot_no}</text>'
+            f'  <polygon id="plot-poly-{plot_no}" data-plot-id="{plot_id}" data-plot-number="{plot_no}" data-status="{status_label}" points="{p_pts_str}" fill="{fill_color}" stroke="{stroke_color}" stroke-width="0.9" class="landos-plot {"landos-plot-booked" if is_booked else "landos-plot-available"}"/>',
+            f'  <text x="{cx:.1f}" y="{y1:.1f}" class="plot-num" font-size="{font_no:.1f}" text-anchor="middle" fill="#ffffff" font-weight="700" pointer-events="none">{plot_no}</text>'
         ]
         if show_dim and y2 is not None:
-            plot_svg.append(f'  <text x="{cx:.1f}" y="{y2:.1f}" class="plot-dim" font-size="{font_dim:.1f}" text-anchor="middle">{dim_lbl}</text>')
+            plot_svg.append(f'  <text x="{cx:.1f}" y="{y2:.1f}" class="plot-dim" font-size="{font_dim:.1f}" text-anchor="middle" fill="#94a3b8" pointer-events="none">{dim_lbl}</text>')
         plot_svg.append('</g>')
         svg_parts.append("\n".join(plot_svg))
+
 
     # Close internal elements clip-path group
     svg_parts.append("</g>")

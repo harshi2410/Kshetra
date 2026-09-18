@@ -1,5 +1,9 @@
 from app.db.base import Base
-from app.models.project import Project, ProjectLocation, ProjectSurvey, ProjectCommercial, ProjectLegal, LayoutSource, LayoutProcessingJob, LayoutProcessingArtifact, ProjectPlot
+from app.models.project import (
+    Project, ProjectLocation, ProjectSurvey, ProjectCommercial, ProjectLegal,
+    LayoutSource, LayoutProcessingJob, LayoutProcessingArtifact, ProjectPlot,
+    GeneratedLayoutVariant, PlotBooking
+)
 from app.models.user import User
 
 __all__ = [
@@ -13,6 +17,9 @@ __all__ = [
     "LayoutSource",
     "LayoutProcessingJob",
     "LayoutProcessingArtifact",
-    "ProjectPlot"
+    "ProjectPlot",
+    "GeneratedLayoutVariant",
+    "PlotBooking"
 ]
+
 

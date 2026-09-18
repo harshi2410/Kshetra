@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, Form, Uploa
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.db.session import get_db
-from app.schemas.project import ProjectCreate, ProjectResponse, LayoutSourceResponse, LayoutSourceDetailResponse, ProcessingJobResponse, ProcessingArtifactResponse, VectorExtractionResponse, GeometryNormalizationResponse, CLMBuildResponse, PlotResponse, PlotUpdate
+from app.schemas.project import (
+    ProjectCreate, ProjectResponse, LayoutSourceResponse, LayoutSourceDetailResponse,
+    ProcessingJobResponse, ProcessingArtifactResponse, VectorExtractionResponse,
+    GeometryNormalizationResponse, CLMBuildResponse, PlotResponse, PlotUpdate,
+    PlotBookingCreate, PlotBookingUpdate, PlotBookingResponse
+)
 from app.api.v1.endpoints.ai_pipeline import execute_ai_pipeline_job
 
 
@@ -213,6 +218,48 @@ def update_project_plot(project_id: str, plot_id: str, payload: PlotUpdate, db: 
     Preserves pipeline-generated spatial geometry and area.
     """
     return project_service_instance.update_project_plot(db, project_id, plot_id, payload)
+
+
+@router.get("/{project_id}/plots/{plot_id}", response_model=PlotResponse, summary="Get single plot details with active booking and customer info")
+def get_project_plot(project_id: str, plot_id: str, db: Session = Depends(get_db)):
+    """
+    Retrieves individual plot details by ID or plot number, including current booking and customer details.
+    """
+    return project_service_instance.get_plot_by_id(db, project_id, plot_id)
+
+
+@router.post("/{project_id}/plots/{plot_id}/book", response_model=PlotResponse, status_code=status.HTTP_201_CREATED, summary="Book an available plot with customer & payment details")
+def book_project_plot(project_id: str, plot_id: str, payload: PlotBookingCreate, db: Session = Depends(get_db)):
+    """
+    Books an available plot, updates status from AVAILABLE to BOOKED, records customer & payment info,
+    calculates financial balances, and protects against duplicate concurrent bookings.
+    """
+    return project_service_instance.book_plot(db, project_id, plot_id, payload)
+
+
+@router.put("/{project_id}/bookings/{booking_id}", summary="Update existing booking and customer info")
+def update_project_booking(project_id: str, booking_id: str, payload: PlotBookingUpdate, db: Session = Depends(get_db)):
+    """
+    Updates customer details, payment amounts, and notes for an existing booking.
+    Automatically recalculates remaining balance.
+    """
+    return project_service_instance.update_booking(db, project_id, booking_id, payload)
+
+
+@router.post("/{project_id}/bookings/{booking_id}/cancel", summary="Cancel a plot booking and release plot back to AVAILABLE")
+def cancel_project_booking(project_id: str, booking_id: str, db: Session = Depends(get_db)):
+    """
+    Cancels an active booking, releases plot back to AVAILABLE (GREEN), and preserves audit history.
+    """
+    return project_service_instance.cancel_booking(db, project_id, booking_id)
+
+
+@router.get("/{project_id}/bookings", response_model=List[PlotBookingResponse], summary="List all bookings for a project")
+def get_project_bookings(project_id: str, db: Session = Depends(get_db)):
+    """
+    Lists all bookings for the project (both active and cancelled) for customer management table.
+    """
+    return project_service_instance.get_project_bookings(db, project_id)
 
 
 
