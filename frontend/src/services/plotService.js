@@ -56,6 +56,10 @@ export function normalizePlot(raw, projectId = '') {
                : rawStatus === 'BLOCKED' ? 'Blocked'
                : 'Available';
 
+  const customerName = raw.customerName || raw.activeBooking?.customerName || (raw.customerId ? (loadCustomers().find(c => c.id === raw.customerId)?.name || '') : '');
+  const customerPhone = raw.customerPhone || raw.activeBooking?.customerPhone || (raw.customerId ? (loadCustomers().find(c => c.id === raw.customerId)?.phone || '') : '');
+  const customerEmail = raw.customerEmail || raw.activeBooking?.customerEmail || (raw.customerId ? (loadCustomers().find(c => c.id === raw.customerId)?.email || '') : '');
+
   return {
     id: raw.id || raw.plotId || `plot-${plotNo}`,
     plotId: raw.plotId || raw.id,
@@ -74,9 +78,13 @@ export function normalizePlot(raw, projectId = '') {
     status,
     rawStatus,
     customerId: raw.customerId || null,
+    customerName,
+    customerPhone,
+    customerEmail,
     brokerId: raw.brokerId || null,
     notes: raw.notes || '',
     projectId: raw.projectId || projectId,
+    activeBooking: raw.activeBooking || null,
   };
 }
 
@@ -159,14 +167,30 @@ export const plotService = {
     return null;
   },
 
-  /** UPDATE a plot (status, price, customerId, brokerId, notes) */
+  /** UPDATE a plot (status, price, customerId, brokerId, notes, customerName, customerPhone, customerEmail) */
   async updatePlot(plotId, updates, projectId = null) {
+    // If customer details were provided, ensure customer is also saved in local customers list
+    if (updates.customerName && updates.customerName.trim()) {
+      let cust = this.getAllCustomers().find(c => c.name.toLowerCase() === updates.customerName.trim().toLowerCase());
+      if (!cust) {
+        cust = this.addCustomer({
+          name: updates.customerName.trim(),
+          phone: updates.customerPhone || '',
+          email: updates.customerEmail || '',
+        });
+      }
+      updates.customerId = cust.id;
+    }
+
     if (projectId) {
       try {
         await projectService.updatePlotStatus(projectId, plotId, {
           status: updates.status ? updates.status.toUpperCase() : undefined,
           basePrice: updates.price !== undefined ? Number(updates.price) : undefined,
           customerId: updates.customerId || null,
+          customerName: updates.customerName || null,
+          customerPhone: updates.customerPhone || null,
+          customerEmail: updates.customerEmail || null,
           notes: updates.notes,
         });
       } catch (err) {
@@ -175,13 +199,23 @@ export const plotService = {
     }
 
     const plots = loadPlots();
-    const idx = plots.findIndex(p => p.id === plotId);
+    const idx = plots.findIndex(p => p.id === plotId || p.plotNo === plotId || p.plotNumber === plotId);
     if (idx !== -1) {
       plots[idx] = { ...plots[idx], ...updates };
       savePlots(plots);
-      return plots[idx];
+      return normalizePlot(plots[idx], projectId);
+    } else {
+      const newEntry = {
+        id: plotId,
+        plotNo: updates.plotNo || updates.plotNumber || plotId,
+        plotNumber: updates.plotNumber || updates.plotNo || plotId,
+        projectId,
+        ...updates
+      };
+      plots.push(newEntry);
+      savePlots(plots);
+      return normalizePlot(newEntry, projectId);
     }
-    return updates;
   },
 
   /** GET plot count stats for a project */

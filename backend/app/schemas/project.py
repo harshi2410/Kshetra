@@ -203,10 +203,12 @@ class CLMBuildResponse(BaseModel):
 
 
 class PlotUpdate(BaseModel):
-
     status: Optional[str] = None
     notes: Optional[str] = None
     customerId: Optional[str] = None
+    customerName: Optional[str] = None
+    customerPhone: Optional[str] = None
+    customerEmail: Optional[str] = None
     reservationDate: Optional[str] = None
     basePrice: Optional[float] = None
 

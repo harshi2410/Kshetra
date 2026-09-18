@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   X, ZoomIn, ZoomOut, Maximize2, Layers, Info, CheckCircle2,
   Edit2, Download, FileText, Sparkles, Check, ChevronDown,
-  Activity, ShieldCheck, CheckCircle, AlertTriangle, RefreshCw, Eye
+  Activity, ShieldCheck, CheckCircle, AlertTriangle, RefreshCw, Eye,
+  User, Phone, Mail, Save, Tag
 } from 'lucide-react';
 import projectService from '../../../../services/projectService';
 import plotService from '../../../../services/plotService';
@@ -11,13 +12,120 @@ import GeometryEditorModal from '../../../../components/geometry_editor/Geometry
 import PlanningNormsSelector from '../components/PlanningNormsSelector';
 import LayoutAlternativesModal from '../components/LayoutAlternativesModal';
 import BoundaryConfirmationModal from '../../../../components/boundary_editor/BoundaryConfirmationModal';
+import PlotDrawer from '../components/PlotDrawer';
 
 const STATUS_STYLE = {
-  AVAILABLE: { bg: '#dcfce7', color: '#15803d', border: '#bbf7d0' },
-  RESERVED: { bg: '#fef9c3', color: '#a16207', border: '#fde68a' },
-  SOLD: { bg: 'rgba(122,30,58,0.1)', color: '#7A1E3A', border: 'rgba(122,30,58,0.25)' },
+  AVAILABLE: { bg: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: 'rgba(34, 197, 94, 0.3)' },
+  RESERVED: { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' },
+  SOLD: { bg: 'rgba(239, 68, 68, 0.18)', color: '#ef4444', border: 'rgba(239, 68, 68, 0.35)' },
+  BOOKED: { bg: 'rgba(239, 68, 68, 0.18)', color: '#ef4444', border: 'rgba(239, 68, 68, 0.35)' },
   BLOCKED: { bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' },
 };
+
+/**
+ * Enforces the strict 2-color plot system:
+ * - AVAILABLE plots: Vibrant GREEN (rgba(34,197,94,0.22), stroke #22c55e)
+ * - SOLD plots: Vibrant RED (rgba(239,68,68,0.35), stroke #ef4444)
+ * Removes legacy corner amber/orange colors and synchronizes with project plot state.
+ */
+export function applyTwoColorPlotStyles(svgString, plotsList = []) {
+  if (!svgString || typeof svgString !== 'string') return svgString;
+
+  const statusMap = new Map();
+  if (Array.isArray(plotsList)) {
+    plotsList.forEach(p => {
+      const isSold = (p.status || '').toUpperCase() === 'SOLD' || (p.status || '').toUpperCase() === 'BOOKED';
+      const st = isSold ? 'SOLD' : 'AVAILABLE';
+      if (p.plotNo) {
+        statusMap.set(p.plotNo.toUpperCase(), st);
+        statusMap.set(p.plotNo.replace(/^P-0*/i, '').toUpperCase(), st);
+        statusMap.set(`P-${p.plotNo.replace(/^P-0*/i, '').padStart(2, '0')}`.toUpperCase(), st);
+      }
+      if (p.plotNumber) {
+        statusMap.set(p.plotNumber.toUpperCase(), st);
+        statusMap.set(p.plotNumber.replace(/^P-0*/i, '').toUpperCase(), st);
+        statusMap.set(`P-${p.plotNumber.replace(/^P-0*/i, '').padStart(2, '0')}`.toUpperCase(), st);
+      }
+      if (p.id) statusMap.set(String(p.id).toUpperCase(), st);
+      if (p.plotId) statusMap.set(String(p.plotId).toUpperCase(), st);
+    });
+  }
+
+  const styleBlock = `<style id="landos-two-color-theme">
+    .landos-plot-available, polygon[data-status="AVAILABLE"], polygon[data-status="Available"] {
+      fill: rgba(34, 197, 94, 0.22) !important;
+      stroke: #22c55e !important;
+      stroke-width: 1.0px !important;
+      transition: all 0.2s ease-in-out;
+    }
+    .landos-plot-sold, .landos-plot-booked, polygon[data-status="SOLD"], polygon[data-status="Sold"], polygon[data-status="BOOKED"] {
+      fill: rgba(239, 68, 68, 0.35) !important;
+      stroke: #ef4444 !important;
+      stroke-width: 1.4px !important;
+      transition: all 0.2s ease-in-out;
+    }
+    .landos-plot-group {
+      cursor: pointer;
+    }
+    .landos-plot-group:hover polygon {
+      filter: brightness(1.25) drop-shadow(0 0 8px rgba(56, 189, 248, 0.5));
+      stroke-width: 2.2px !important;
+    }
+  </style>`;
+
+  let cleaned = svgString;
+
+  cleaned = cleaned.replace(/<polygon\s+([^>]*id=["']plot-poly-([^"']+)["'][^>]*)>/gi, (fullMatch, attrs, pNum) => {
+    const key = pNum.toUpperCase();
+    const mapped = statusMap.get(key) || statusMap.get(key.replace(/^P-0*/i, '')) || statusMap.get(`P-${key.replace(/^P-0*/i, '').padStart(2, '0')}`);
+    const isSoldAttr = /data-status=["'](SOLD|BOOKED)["']/i.test(attrs) || /landos-plot-booked|landos-plot-sold/i.test(attrs);
+    const isSold = mapped ? (mapped === 'SOLD') : isSoldAttr;
+
+    const fill = isSold ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.22)';
+    const stroke = isSold ? '#ef4444' : '#22c55e';
+    const statusVal = isSold ? 'SOLD' : 'AVAILABLE';
+    const classVal = isSold ? 'landos-plot landos-plot-sold' : 'landos-plot landos-plot-available';
+
+    let newAttrs = attrs
+      .replace(/fill=["'][^"']*["']/i, `fill="${fill}"`)
+      .replace(/stroke=["'][^"']*["']/i, `stroke="${stroke}"`)
+      .replace(/data-status=["'][^"']*["']/i, `data-status="${statusVal}"`)
+      .replace(/class=["'][^"']*["']/i, `class="${classVal}"`);
+
+    if (!/data-status=/i.test(newAttrs)) {
+      newAttrs += ` data-status="${statusVal}"`;
+    }
+
+    return `<polygon ${newAttrs}>`;
+  });
+
+  cleaned = cleaned.replace(/<polygon\s+([^>]*data-plot-(?:number|id)=["']([^"']+)["'][^>]*)>/gi, (fullMatch, attrs, pNum) => {
+    if (attrs.includes('id="plot-poly-')) return fullMatch;
+    const key = pNum.toUpperCase();
+    const mapped = statusMap.get(key) || statusMap.get(key.replace(/^P-0*/i, ''));
+    const isSoldAttr = /data-status=["'](SOLD|BOOKED)["']/i.test(attrs) || /landos-plot-booked|landos-plot-sold/i.test(attrs);
+    const isSold = mapped ? (mapped === 'SOLD') : isSoldAttr;
+
+    const fill = isSold ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.22)';
+    const stroke = isSold ? '#ef4444' : '#22c55e';
+    const statusVal = isSold ? 'SOLD' : 'AVAILABLE';
+    const classVal = isSold ? 'landos-plot landos-plot-sold' : 'landos-plot landos-plot-available';
+
+    let newAttrs = attrs
+      .replace(/fill=["'][^"']*["']/i, `fill="${fill}"`)
+      .replace(/stroke=["'][^"']*["']/i, `stroke="${stroke}"`)
+      .replace(/data-status=["'][^"']*["']/i, `data-status="${statusVal}"`)
+      .replace(/class=["'][^"']*["']/i, `class="${classVal}"`);
+
+    return `<polygon ${newAttrs}>`;
+  });
+
+  if (!cleaned.includes('id="landos-two-color-theme"')) {
+    cleaned = cleaned.replace(/<svg([^>]*)>/i, `<svg$1>${styleBlock}`);
+  }
+
+  return cleaned;
+}
 
 const PIPELINE_STAGES = [
   { id: 'INGESTION', label: '1. Ingestion', desc: 'PDF / Raster / CAD ingestion' },
@@ -40,9 +148,36 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedPlot, setSelectedPlot] = useState(null);
+  const [isPlotDrawerOpen, setIsPlotDrawerOpen] = useState(false);
+  const [plotEditForm, setPlotEditForm] = useState({
+    status: 'Available',
+    customerName: '',
+    customerPhone: '',
+    customerEmail: '',
+    price: '',
+    notes: '',
+  });
+  const [isSavingPlot, setIsSavingPlot] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState('');
+  const hasDraggedRef = useRef(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [currentLayoutId, setCurrentLayoutId] = useState('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedPlot) {
+      const isSold = (selectedPlot.status || '').toUpperCase() === 'SOLD' || (selectedPlot.status || '').toUpperCase() === 'BOOKED';
+      setPlotEditForm({
+        status: isSold ? 'Sold' : 'Available',
+        customerName: selectedPlot.customerName || (selectedPlot.customerId ? plotService.getCustomerName(selectedPlot.customerId) : '') || '',
+        customerPhone: selectedPlot.customerPhone || '',
+        customerEmail: selectedPlot.customerEmail || '',
+        price: selectedPlot.price || '',
+        notes: selectedPlot.notes || '',
+      });
+      setSaveFeedback('');
+    }
+  }, [selectedPlot]);
 
   // Maharashtra UDCPR Layout Alternatives Modal & Generator State (13A-13O)
   const [isAlternativesModalOpen, setIsAlternativesModalOpen] = useState(false);
@@ -123,6 +258,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
 
       const plotList = await plotService.getPlotsByProject(project.id);
       setPlots(plotList || []);
+      setSvgContent(prev => applyTwoColorPlotStyles(prev, plotList || []));
 
       // Load confirmed or detected boundary polygon (Section 26-34)
       try {
@@ -176,7 +312,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
       const svgRes = await projectService.getVariantSvg(project.id, varId);
       const modelRes = await projectService.getVariantModel(project.id, varId);
 
-      if (svgRes?.svgContent) setSvgContent(svgRes.svgContent);
+      if (svgRes?.svgContent) setSvgContent(applyTwoColorPlotStyles(svgRes.svgContent, plots));
       if (modelRes) setLayoutModel(modelRes);
     } catch (err) {
       console.error('Error switching variant:', err);
@@ -208,7 +344,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
           setSelectedVariantId(first.id);
           const svgRes = await projectService.getVariantSvg(project.id, first.id);
           const modelRes = await projectService.getVariantModel(project.id, first.id);
-          if (svgRes?.svgContent) setSvgContent(svgRes.svgContent);
+          if (svgRes?.svgContent) setSvgContent(applyTwoColorPlotStyles(svgRes.svgContent, plots));
           if (modelRes) setLayoutModel(modelRes);
           setIsAlternativesModalOpen(true);
         }
@@ -239,28 +375,120 @@ export default function LayoutMap({ project, onOpenPlot }) {
 
   // Click listener for SVG plot elements
   const handleSvgClick = (e) => {
+    if (hasDraggedRef.current) return;
     const target = e.target.closest('[data-plot-id]') || e.target.closest('polygon');
     if (!target) return;
 
     const plotId = target.getAttribute('data-plot-id') || target.id?.replace('plot-poly-', '');
-    if (!plotId) return;
+    const plotNumber = target.getAttribute('data-plot-number') || target.id?.replace('plot-poly-', '');
+    if (!plotId && !plotNumber) return;
 
-    const modelPlot = layoutModel?.plots?.find(p => p.plotId === plotId || p.plotNumber === plotId || p.id === plotId);
-    const dbPlot = plots.find(p => p.id === plotId || p.plotNo === modelPlot?.plotNumber);
+    const modelPlot = layoutModel?.plots?.find(p =>
+      p.plotId === plotId || p.plotNumber === plotNumber || p.plotNumber === plotId || p.id === plotId
+    );
+    const dbPlot = plots.find(p =>
+      p.id === plotId || p.plotNo === plotNumber || p.plotNumber === plotNumber || p.plotNo === plotId || p.id === modelPlot?.id
+    );
+
+    const resolvedPlotNo = modelPlot?.plotNumber || dbPlot?.plotNo || dbPlot?.plotNumber || plotNumber || plotId;
+    const resolvedId = dbPlot?.id || modelPlot?.id || modelPlot?.plotId || plotId;
+    const currentStatus = dbPlot?.status || (modelPlot?.status === 'BOOKED' || modelPlot?.status === 'SOLD' ? 'Sold' : 'Available');
 
     const mergedPlot = {
-      id: plotId,
-      plotNumber: modelPlot?.plotNumber || dbPlot?.plotNo || plotId,
-      area: modelPlot?.areaSqft || dbPlot?.area || 1200,
-      status: dbPlot?.status || modelPlot?.status || 'AVAILABLE',
-      roadName: modelPlot?.roadName || 'Main Avenue',
+      id: resolvedId,
+      plotId: resolvedId,
+      plotNo: resolvedPlotNo,
+      plotNumber: resolvedPlotNo,
+      area: modelPlot?.areaSqft || dbPlot?.area || dbPlot?.areaSqft || 1200,
+      areaSqft: modelPlot?.areaSqft || dbPlot?.areaSqft || dbPlot?.area || 1200,
+      areaSqm: dbPlot?.areaSqm || Math.round((modelPlot?.areaSqft || 1200) * 0.0929),
+      status: currentStatus,
+      rawStatus: currentStatus.toUpperCase(),
+      roadName: modelPlot?.roadName || dbPlot?.roadName || 'Main Avenue (9.0M ROW)',
       dimensions: modelPlot?.dimensions || dbPlot?.dimensions || `${modelPlot?.widthFt || 30} × ${modelPlot?.depthFt || 40} FT`,
-      price: modelPlot?.estimatedPrice || dbPlot?.price || 3000000,
+      price: dbPlot?.price || modelPlot?.estimatedPrice || 2500000,
       facing: modelPlot?.facing || dbPlot?.facing || 'NORTH',
-      isCorner: modelPlot?.isCorner || false,
+      isCorner: Boolean(modelPlot?.isCorner || dbPlot?.isCorner),
+      customerId: dbPlot?.customerId || null,
+      customerName: dbPlot?.customerName || (dbPlot?.customerId ? plotService.getCustomerName(dbPlot.customerId) : '') || '',
+      customerPhone: dbPlot?.customerPhone || '',
+      customerEmail: dbPlot?.customerEmail || '',
+      notes: dbPlot?.notes || '',
     };
 
     setSelectedPlot(mergedPlot);
+  };
+
+  // Save Plot Updates directly from map editor or drawer
+  const handleSavePlot = async (plotIdToSave = null, updatesToSave = null) => {
+    if (!selectedPlot && !plotIdToSave) return;
+    setIsSavingPlot(true);
+    setSaveFeedback('');
+    try {
+      const resolvedId = plotIdToSave || selectedPlot.id || selectedPlot.plotId;
+      const payload = updatesToSave || {
+        status: plotEditForm.status,
+        price: Number(plotEditForm.price) || selectedPlot.price,
+        customerName: plotEditForm.customerName,
+        customerPhone: plotEditForm.customerPhone,
+        customerEmail: plotEditForm.customerEmail,
+        notes: plotEditForm.notes,
+      };
+
+      await plotService.updatePlot(resolvedId, payload, project.id);
+
+      const isSold = payload.status === 'Sold' || (payload.status || '').toUpperCase() === 'SOLD';
+      const newStatus = isSold ? 'Sold' : 'Available';
+
+      // 1. Update plots array in state
+      setPlots(prev => {
+        const idx = prev.findIndex(p => p.id === resolvedId || p.plotNo === selectedPlot?.plotNumber || p.plotNumber === selectedPlot?.plotNumber);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...payload, status: newStatus };
+          return next;
+        }
+        return [...prev, { id: resolvedId, plotNo: selectedPlot?.plotNumber, plotNumber: selectedPlot?.plotNumber, ...payload, status: newStatus }];
+      });
+
+      // 2. Immediately update SVG DOM element for instant visual feedback
+      if (containerRef.current) {
+        const plotNo = selectedPlot?.plotNumber;
+        const selector = `[data-plot-number="${plotNo}"], #plot-poly-${plotNo}, [data-plot-id="${resolvedId}"]`;
+        const poly = containerRef.current.querySelector(selector);
+        if (poly) {
+          poly.setAttribute('data-status', isSold ? 'SOLD' : 'AVAILABLE');
+          poly.setAttribute('fill', isSold ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.22)');
+          poly.setAttribute('stroke', isSold ? '#ef4444' : '#22c55e');
+          poly.setAttribute('class', `landos-plot ${isSold ? 'landos-plot-sold' : 'landos-plot-available'}`);
+        }
+      }
+
+      // 3. Update svgContent state with strict 2-color rule
+      setSvgContent(prevSvg => applyTwoColorPlotStyles(prevSvg, [{
+        plotNo: selectedPlot?.plotNumber,
+        plotNumber: selectedPlot?.plotNumber,
+        id: resolvedId,
+        status: newStatus
+      }]));
+
+      // 4. Update selectedPlot
+      setSelectedPlot(prev => prev ? {
+        ...prev,
+        ...payload,
+        status: newStatus,
+        rawStatus: isSold ? 'SOLD' : 'AVAILABLE',
+      } : null);
+
+      setSaveFeedback(isSold ? 'Updated to SOLD (Red)!' : 'Updated to AVAILABLE (Green)!');
+      setTimeout(() => setSaveFeedback(''), 4000);
+      if (isPlotDrawerOpen) setIsPlotDrawerOpen(false);
+    } catch (err) {
+      console.error('Error saving plot:', err);
+      setSaveFeedback('Error saving plot');
+    } finally {
+      setIsSavingPlot(false);
+    }
   };
 
   // Zoom / Pan handlers
@@ -293,11 +521,17 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const handleMouseDown = (e) => {
     if (e.button !== 0 && e.button !== 1) return;
     setIsDragging(true);
-    dragStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+    hasDraggedRef.current = false;
+    dragStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y, startX: e.clientX, startY: e.clientY };
   };
 
   const handleMouseMove = (e) => {
     if (!isDragging) return;
+    const dx = Math.abs(e.clientX - (dragStartRef.current.startX || 0));
+    const dy = Math.abs(e.clientY - (dragStartRef.current.startY || 0));
+    if (dx > 4 || dy > 4) {
+      hasDraggedRef.current = true;
+    }
     setPanOffset({
       x: e.clientX - dragStartRef.current.x,
       y: e.clientY - dragStartRef.current.y
@@ -903,7 +1137,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
         {/* Floating Orientation & Metrics HUD (Bottom-Right) */}
         <div className="hide-on-mobile" style={{
           position: 'absolute', bottom: '12px', right: '12px', zIndex: 90,
-          background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(10px)',
+          background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(10px)',
           border: '1px solid #1e293b', borderRadius: '8px', padding: '6px 12px',
           display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           pointerEvents: 'none'
@@ -912,87 +1146,252 @@ export default function LayoutMap({ project, onOpenPlot }) {
             <span>🧭 N ↑</span>
           </div>
           <div style={{ width: '1px', height: '14px', background: '#334155' }} />
-          <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 600 }}>
-            Scale: 1:100 Metric CAD
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.68rem', fontWeight: 700 }}>
+            <span style={{ color: '#22c55e' }}>🟢 Available: {plots.filter(p => (p.status || '').toUpperCase() !== 'SOLD' && (p.status || '').toUpperCase() !== 'BOOKED').length}</span>
+            <span style={{ color: '#ef4444' }}>🔴 Sold: {plots.filter(p => (p.status || '').toUpperCase() === 'SOLD' || (p.status || '').toUpperCase() === 'BOOKED').length}</span>
           </div>
           {layoutModel?.statistics?.totalPlots && (
             <>
               <div style={{ width: '1px', height: '14px', background: '#334155' }} />
-              <div style={{ color: '#34d399', fontSize: '0.68rem', fontWeight: 700 }}>
-                {layoutModel.statistics.totalPlots} Plots
+              <div style={{ color: '#38bdf8', fontSize: '0.68rem', fontWeight: 700 }}>
+                {layoutModel.statistics.totalPlots} Total
               </div>
             </>
           )}
         </div>
 
-        {/* Selected Plot Floating Metadata Drawer */}
+        {/* Selected Plot Floating Interactive Editor Drawer */}
         {selectedPlot && (
           <div
             className="floating-plot-drawer"
             style={{
-              position: 'absolute', top: '12px', right: '12px', width: 'min(300px, calc(100% - 24px))',
-              background: 'rgba(15, 23, 42, 0.94)', backdropFilter: 'blur(10px)', border: '1px solid #334155',
-              borderRadius: '10px', boxShadow: '0 10px 35px rgba(0,0,0,0.6)', zIndex: 100, padding: '14px'
+              position: 'absolute', top: '12px', right: '12px', width: 'min(330px, calc(100% - 24px))',
+              background: 'rgba(15, 23, 42, 0.96)', backdropFilter: 'blur(16px)', border: '1px solid #334155',
+              borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.7)', zIndex: 100, padding: '14px',
+              color: '#f8fafc', maxHeight: 'calc(100% - 24px)', overflowY: 'auto'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: '8px', marginBottom: '10px' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: '10px', marginBottom: '10px' }}>
               <div>
-                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#f8fafc' }}>
-                  Plot {selectedPlot.plotNumber}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>
+                    Plot {selectedPlot.plotNumber}
+                  </span>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: '4px', fontSize: '0.66rem', fontWeight: 800,
+                    background: plotEditForm.status === 'Sold' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                    color: plotEditForm.status === 'Sold' ? '#ef4444' : '#22c55e',
+                    border: plotEditForm.status === 'Sold' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)',
+                  }}>
+                    {plotEditForm.status === 'Sold' ? '🔴 SOLD' : '🟢 AVAILABLE'}
+                  </span>
                 </div>
-                <span style={{
-                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700,
-                  background: STATUS_STYLE[selectedPlot.status]?.bg || '#dcfce7',
-                  color: STATUS_STYLE[selectedPlot.status]?.color || '#15803d',
-                  marginTop: '2px', display: 'inline-block'
-                }}>
-                  {selectedPlot.status}
-                </span>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '2px' }}>
+                  {selectedPlot.dimensions} • {selectedPlot.area} SQFT ({selectedPlot.facing})
+                </div>
               </div>
               <button
                 onClick={() => setSelectedPlot(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+                title="Close"
               >
                 <X style={{ width: '16px', height: '16px' }} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '0.74rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#94a3b8' }}>Dimensions:</span>
-                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{selectedPlot.dimensions}</span>
+            {/* Quick Status Selector: Green (Available) & Red (Sold) */}
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', marginBottom: '5px' }}>
+                Availability Status (2-Color Mode)
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#94a3b8' }}>Calculated Area:</span>
-                <span style={{ fontWeight: 700, color: '#38bdf8' }}>{selectedPlot.area} SQFT</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#94a3b8' }}>Facing Direction:</span>
-                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{selectedPlot.facing}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#94a3b8' }}>Road Access:</span>
-                <span style={{ fontWeight: 700, color: '#f8fafc' }}>{selectedPlot.roadName}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #1e293b', paddingTop: '6px' }}>
-                <span style={{ color: '#94a3b8' }}>Estimated Price:</span>
-                <span style={{ fontWeight: 800, color: '#34d399' }}>{formatCurrency(selectedPlot.price)}</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPlotEditForm(f => ({ ...f, status: 'Available' }))}
+                  style={{
+                    height: '36px', borderRadius: '6px', cursor: 'pointer',
+                    border: plotEditForm.status === 'Available' ? '2px solid #22c55e' : '1px solid #1e293b',
+                    background: plotEditForm.status === 'Available' ? '#15803d' : 'rgba(30, 41, 59, 0.6)',
+                    color: plotEditForm.status === 'Available' ? '#ffffff' : '#94a3b8',
+                    fontSize: '0.74rem', fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    boxShadow: plotEditForm.status === 'Available' ? '0 0 14px rgba(34,197,94,0.35)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>🟢</span> Available
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlotEditForm(f => ({ ...f, status: 'Sold' }))}
+                  style={{
+                    height: '36px', borderRadius: '6px', cursor: 'pointer',
+                    border: plotEditForm.status === 'Sold' ? '2px solid #ef4444' : '1px solid #1e293b',
+                    background: plotEditForm.status === 'Sold' ? '#b91c1c' : 'rgba(30, 41, 59, 0.6)',
+                    color: plotEditForm.status === 'Sold' ? '#ffffff' : '#94a3b8',
+                    fontSize: '0.74rem', fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    boxShadow: plotEditForm.status === 'Sold' ? '0 0 14px rgba(239,68,68,0.35)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>🔴</span> Sold
+                </button>
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                if (onOpenPlot) onOpenPlot(selectedPlot.id);
-              }}
-              style={{
-                width: '100%', marginTop: '12px', padding: '7px 0', borderRadius: '6px',
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', color: '#ffffff',
-                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
-              }}
-            >
-              View in Inventory Table →
-            </button>
+            {/* Customer Details Form */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <User style={{ width: '12px', height: '12px', color: '#38bdf8' }} />
+                {plotEditForm.status === 'Sold' ? 'Buyer / Customer Information' : 'Prospective Customer / Lead'}
+              </div>
+
+              <div>
+                <input
+                  type="text"
+                  placeholder="Customer Full Name (e.g. Rahul Sharma)"
+                  value={plotEditForm.customerName}
+                  onChange={e => setPlotEditForm(f => ({ ...f, customerName: e.target.value }))}
+                  style={{
+                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.76rem',
+                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <input
+                  type="text"
+                  placeholder="Phone Number"
+                  value={plotEditForm.customerPhone}
+                  onChange={e => setPlotEditForm(f => ({ ...f, customerPhone: e.target.value }))}
+                  style={{
+                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.74rem',
+                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+                <input
+                  type="email"
+                  placeholder="Email Address"
+                  value={plotEditForm.customerEmail}
+                  onChange={e => setPlotEditForm(f => ({ ...f, customerEmail: e.target.value }))}
+                  style={{
+                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.74rem',
+                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.62rem', color: '#94a3b8', marginBottom: '3px' }}>
+                  Sale / Valuation Price (₹)
+                </label>
+                <input
+                  type="number"
+                  placeholder="Price in ₹"
+                  value={plotEditForm.price}
+                  onChange={e => setPlotEditForm(f => ({ ...f, price: e.target.value }))}
+                  style={{
+                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.76rem',
+                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+                    color: '#34d399', fontWeight: 700, outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <textarea
+                  placeholder="Notes or booking remarks…"
+                  value={plotEditForm.notes}
+                  onChange={e => setPlotEditForm(f => ({ ...f, notes: e.target.value }))}
+                  style={{
+                    width: '100%', height: '48px', padding: '6px 10px', fontSize: '0.72rem',
+                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box', resize: 'vertical'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Save Feedback Banner */}
+            {saveFeedback && (
+              <div style={{
+                padding: '6px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                background: saveFeedback.includes('SOLD') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                color: saveFeedback.includes('SOLD') ? '#ef4444' : '#22c55e',
+                border: saveFeedback.includes('SOLD') ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)',
+                marginBottom: '10px', textAlign: 'center'
+              }}>
+                ✓ {saveFeedback}
+              </div>
+            )}
+
+            {/* Save & Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => handleSavePlot()}
+                disabled={isSavingPlot}
+                style={{
+                  width: '100%', height: '36px', borderRadius: '6px',
+                  background: plotEditForm.status === 'Sold'
+                    ? 'linear-gradient(135deg, #dc2626, #991b1b)'
+                    : 'linear-gradient(135deg, #16a34a, #15803d)',
+                  border: 'none', color: '#ffffff',
+                  fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  boxShadow: plotEditForm.status === 'Sold'
+                    ? '0 4px 14px rgba(220, 38, 38, 0.4)'
+                    : '0 4px 14px rgba(22, 163, 74, 0.4)',
+                  opacity: isSavingPlot ? 0.7 : 1
+                }}
+              >
+                <Save style={{ width: '14px', height: '14px' }} />
+                {isSavingPlot ? 'Updating Plot…' : `Save Plot as ${plotEditForm.status === 'Sold' ? 'RED (Sold)' : 'GREEN (Available)'}`}
+              </button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsPlotDrawerOpen(true)}
+                  style={{
+                    height: '28px', borderRadius: '5px', border: '1px solid #334155',
+                    background: '#1e293b', color: '#cbd5e1', fontSize: '0.68rem', fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Full Drawer →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenPlot) onOpenPlot(selectedPlot.id);
+                  }}
+                  style={{
+                    height: '28px', borderRadius: '5px', border: '1px solid #334155',
+                    background: '#1e293b', color: '#cbd5e1', fontSize: '0.68rem', fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Inventory Table →
+                </button>
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Full Plot Drawer when requested from map */}
+        {isPlotDrawerOpen && selectedPlot && (
+          <PlotDrawer
+            plot={selectedPlot}
+            onClose={() => setIsPlotDrawerOpen(false)}
+            onSave={(plotId, updates) => handleSavePlot(plotId, updates)}
+          />
         )}
       </div>
 

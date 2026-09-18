@@ -568,6 +568,17 @@ def get_variant_svg(project_id: str, variant_id: str, db: Session = Depends(get_
     if variant.layout_model_json:
         try:
             model = json.loads(variant.layout_model_json)
+            # Sync real-time plot statuses from project_plots
+            plots_in_db = {
+                p.plot_number: p.status
+                for p in db.query(ProjectPlot).filter(ProjectPlot.project_id == project_id).all()
+            }
+            if plots_in_db:
+                for p in model.get("plots", []):
+                    p_no = p.get("plotNumber")
+                    if p_no in plots_in_db:
+                        p["status"] = plots_in_db[p_no]
+
             fresh_svg = render_svg_from_layout_model(model)
             if fresh_svg:
                 svg_content = fresh_svg
@@ -600,7 +611,21 @@ def get_variant_model(project_id: str, variant_id: str, db: Session = Depends(ge
     if not variant:
         raise HTTPException(status_code=404, detail=f"Variant {variant_id} not found")
 
-    return json.loads(variant.layout_model_json)
+    model = json.loads(variant.layout_model_json) if variant.layout_model_json else {}
+    plots_in_db = {
+        p.plot_number: p
+        for p in db.query(ProjectPlot).filter(ProjectPlot.project_id == project_id).all()
+    }
+    if plots_in_db and "plots" in model:
+        for p in model.get("plots", []):
+            p_no = p.get("plotNumber")
+            if p_no in plots_in_db:
+                db_p = plots_in_db[p_no]
+                p["status"] = db_p.status
+                if db_p.customer_id:
+                    p["customerId"] = db_p.customer_id
+
+    return model
 
 
 @router.post("/projects/{project_id}/variants/{variant_id}/select")

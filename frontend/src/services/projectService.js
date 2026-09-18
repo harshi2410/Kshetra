@@ -678,9 +678,8 @@ export const projectService = {
         if (idx > plotsCount) break;
         const x = startX + c * (pw + 4);
         const y = startY + r * (ph + (r % 2 === 1 ? roadW : 4));
-        const isCorner = c === 0 || c === cols - 1;
-        const fill = isCorner ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.15)';
-        const stroke = isCorner ? '#f59e0b' : '#10b981';
+        const fill = 'rgba(34, 197, 94, 0.20)';
+        const stroke = '#22c55e';
         const isFirstInRow = c === 0;
         plots.push(`
           <g class="landos-plot-group" data-plot-id="plot-${idx}">
@@ -983,6 +982,38 @@ export const projectService = {
       console.warn('getLayoutArtifacts error:', err.message);
     }
     return [];
+  },
+
+  /**
+   * Get all database plots for a project
+   * API Endpoint: GET /api/v1/projects/:projectId/plots
+   */
+  async getProjectPlots(projectId) {
+    try {
+      const res = await apiFetch(`/${projectId}/plots`);
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('getProjectPlots error:', err.message);
+    }
+    return [];
+  },
+
+  /**
+   * Update plot status, price, notes, or customer details
+   * API Endpoint: PATCH /api/v1/projects/:projectId/plots/:plotId
+   */
+  async updatePlotStatus(projectId, plotId, payload) {
+    try {
+      const res = await apiFetch(`/${projectId}/plots/${plotId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('updatePlotStatus error:', err.message);
+    }
+    return null;
   }
 };
 

@@ -664,20 +664,20 @@ def render_clean_svg(
         )
 
         p_pts_str = " ".join(f"{pt['x']:.1f},{pt['y']:.1f}" for pt in pts)
-        is_booked = str(status).upper() == "BOOKED"
-        if is_booked:
-            fill_color = "rgba(239, 68, 68, 0.28)"
+        is_sold = str(status).upper() in ("BOOKED", "SOLD")
+        if is_sold:
+            fill_color = "rgba(239, 68, 68, 0.32)"
             stroke_color = "#ef4444"
-            status_label = "BOOKED"
+            status_label = "SOLD"
         else:
-            fill_color = "rgba(245, 158, 11, 0.16)" if is_corner else "rgba(34, 197, 94, 0.18)"
-            stroke_color = "#f59e0b" if is_corner else "#22c55e"
+            fill_color = "rgba(34, 197, 94, 0.20)"
+            stroke_color = "#22c55e"
             status_label = "AVAILABLE"
 
         plot_svg = [
             f'<g id="{plot_id}" data-plot-id="{plot_id}" data-plot-number="{plot_no}" data-status="{status_label}" class="landos-plot-group" style="cursor: pointer;">',
             f'  <title>{tooltip_text}</title>',
-            f'  <polygon id="plot-poly-{plot_no}" data-plot-id="{plot_id}" data-plot-number="{plot_no}" data-status="{status_label}" points="{p_pts_str}" fill="{fill_color}" stroke="{stroke_color}" stroke-width="0.9" class="landos-plot {"landos-plot-booked" if is_booked else "landos-plot-available"}"/>',
+            f'  <polygon id="plot-poly-{plot_no}" data-plot-id="{plot_id}" data-plot-number="{plot_no}" data-status="{status_label}" points="{p_pts_str}" fill="{fill_color}" stroke="{stroke_color}" stroke-width="1.0" class="landos-plot {"landos-plot-sold" if is_sold else "landos-plot-available"}"/>',
             f'  <text x="{cx:.1f}" y="{y1:.1f}" class="plot-num" font-size="{font_no:.1f}" text-anchor="middle" fill="#ffffff" font-weight="700" pointer-events="none">{plot_no}</text>'
         ]
         if show_dim and y2 is not None:
@@ -765,21 +765,24 @@ def render_clean_svg(
 
     svg_parts.append(f"""
     <g transform="translate({lg_x:.1f}, {lg_y:.1f})">
-      <!-- Row 1: Zone Types -->
-      <rect x="0" y="0" width="7" height="7" rx="1.5" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="0.8"/>
-      <text x="10" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Residential Plots</text>
+      <!-- Row 1: Zone Types & Plot Status (2-Color System) -->
+      <rect x="0" y="0" width="7" height="7" rx="1.5" fill="rgba(34, 197, 94, 0.22)" stroke="#22c55e" stroke-width="0.9"/>
+      <text x="10" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="600">Available Plots</text>
 
-      <rect x="70" y="0" width="7" height="7" rx="1.5" fill="rgba(51, 65, 85, 0.9)" stroke="#64748b" stroke-width="0.8"/>
-      <text x="80" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Road Corridors</text>
+      <rect x="68" y="0" width="7" height="7" rx="1.5" fill="rgba(239, 68, 68, 0.32)" stroke="#ef4444" stroke-width="0.9"/>
+      <text x="78" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="600">Sold Plots</text>
 
-      <rect x="136" y="0" width="7" height="7" rx="1.5" fill="rgba(16, 185, 129, 0.4)" stroke="#10b981" stroke-width="0.8"/>
-      <text x="146" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Recreational Open Space</text>
+      <rect x="130" y="0" width="7" height="7" rx="1.5" fill="rgba(51, 65, 85, 0.9)" stroke="#64748b" stroke-width="0.8"/>
+      <text x="140" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Road Corridors</text>
 
-      <rect x="230" y="0" width="7" height="7" rx="1.5" fill="rgba(59, 130, 246, 0.4)" stroke="#3b82f6" stroke-width="0.8"/>
-      <text x="240" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Civic Amenity Space</text>
+      <rect x="198" y="0" width="7" height="7" rx="1.5" fill="rgba(16, 185, 129, 0.4)" stroke="#10b981" stroke-width="0.8"/>
+      <text x="208" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Open Space</text>
 
-      <rect x="312" y="0" width="7" height="7" rx="1.5" fill="rgba(245, 158, 11, 0.4)" stroke="#f59e0b" stroke-width="0.8"/>
-      <text x="322" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Utility / Infrastructure</text>
+      <rect x="260" y="0" width="7" height="7" rx="1.5" fill="rgba(59, 130, 246, 0.4)" stroke="#3b82f6" stroke-width="0.8"/>
+      <text x="270" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Amenity</text>
+
+      <rect x="314" y="0" width="7" height="7" rx="1.5" fill="rgba(245, 158, 11, 0.4)" stroke="#f59e0b" stroke-width="0.8"/>
+      <text x="324" y="5.8" fill="#cbd5e1" font-size="4.2" font-weight="500">Infrastructure</text>
 
       <!-- Row 2: Standard Plot Specification (Single Clear Source of Truth, No Plot Repetition) -->
       <g transform="translate(0, 14)">

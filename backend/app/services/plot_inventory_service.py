@@ -227,6 +227,56 @@ class PlotInventoryService:
                 try: plot.reservation_date = datetime.fromisoformat(payload.reservationDate.replace('Z', '+00:00'))
                 except Exception: plot.reservation_date = datetime.utcnow()
 
+        # Handle customer name / phone / email linking
+        c_name = getattr(payload, 'customerName', None)
+        c_phone = getattr(payload, 'customerPhone', None)
+        c_email = getattr(payload, 'customerEmail', None)
+
+        if plot.status in ("SOLD", "BOOKED"):
+            # Check existing active booking or create one
+            booking = db.query(PlotBooking).filter(
+                PlotBooking.project_id == project_id,
+                PlotBooking.plot_id == plot.id,
+                PlotBooking.booking_status == "BOOKED"
+            ).first()
+            if not booking:
+                booking = PlotBooking(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    plot_id=plot.id,
+                    customer_name=c_name.strip() if (c_name and c_name.strip()) else "Customer",
+                    customer_phone=c_phone.strip() if (c_phone and c_phone.strip()) else "N/A",
+                    customer_email=c_email.strip() if (c_email and c_email.strip()) else None,
+                    booking_date=datetime.utcnow(),
+                    total_amount=float(plot.base_price or 2500000.0),
+                    booking_amount=float(plot.base_price or 2500000.0),
+                    paid_amount=float(plot.base_price or 2500000.0),
+                    remaining_amount=0.0,
+                    payment_status="PAID",
+                    payment_method="DIRECT",
+                    booking_status="BOOKED"
+                )
+                db.add(booking)
+                plot.customer_id = booking.id
+                plot.reservation_date = datetime.utcnow()
+            else:
+                if c_name and c_name.strip(): booking.customer_name = c_name.strip()
+                if c_phone and c_phone.strip(): booking.customer_phone = c_phone.strip()
+                if c_email is not None: booking.customer_email = c_email.strip() if c_email.strip() else None
+                booking.updated_at = datetime.utcnow()
+        elif plot.status == "AVAILABLE":
+            # Release any active booking for this plot
+            active_bookings = db.query(PlotBooking).filter(
+                PlotBooking.project_id == project_id,
+                PlotBooking.plot_id == plot.id,
+                PlotBooking.booking_status == "BOOKED"
+            ).all()
+            for b in active_bookings:
+                b.booking_status = "CANCELLED"
+                b.updated_at = datetime.utcnow()
+            plot.customer_id = None
+            plot.reservation_date = None
+
         plot.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(plot)

@@ -7,11 +7,14 @@ const STATUSES = ['Available', 'Reserved', 'Sold', 'Blocked'];
 
 export default function PlotDrawer({ plot, onClose, onSave }) {
   const [form, setForm] = useState({
-    price:      plot.price,
-    status:     plot.status,
-    customerId: plot.customerId || '',
-    brokerId:   plot.brokerId  || '',
-    notes:      plot.notes     || '',
+    price:         plot.price,
+    status:        plot.status || 'Available',
+    customerId:    plot.customerId || '',
+    customerName:  plot.customerName || (plot.customerId ? plotService.getCustomerName(plot.customerId) : '') || '',
+    customerPhone: plot.customerPhone || '',
+    customerEmail: plot.customerEmail || '',
+    brokerId:      plot.brokerId  || '',
+    notes:         plot.notes     || '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +47,10 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
     const created = plotService.addCustomer(newCust);
     const updatedList = plotService.getAllCustomers();
     setCustomers(updatedList);
-    set('customerId', created.id); // Auto select new customer
+    set('customerId', created.id);
+    set('customerName', created.name);
+    set('customerPhone', created.phone);
+    set('customerEmail', created.email || '');
     setShowAddCustomer(false);
     setNewCust({ name: '', phone: '', email: '', city: '' });
     setCustErr('');
@@ -64,7 +70,7 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
     const created = plotService.addBroker(newBrok);
     const updatedList = plotService.getAllBrokers();
     setBrokers(updatedList);
-    set('brokerId', created.id); // Auto select new broker
+    set('brokerId', created.id);
     setShowAddBroker(false);
     setNewBrok({ name: '', phone: '', agency: '', commission: '2' });
     setBrokErr('');
@@ -74,11 +80,14 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
     try {
       setSaving(true);
       await onSave(plot.id, {
-        price:      Number(form.price),
-        status:     form.status,
-        customerId: form.customerId || null,
-        brokerId:   form.brokerId  || null,
-        notes:      form.notes,
+        price:         Number(form.price),
+        status:        form.status,
+        customerId:    form.customerId || null,
+        customerName:  form.customerName || null,
+        customerPhone: form.customerPhone || null,
+        customerEmail: form.customerEmail || null,
+        brokerId:      form.brokerId  || null,
+        notes:         form.notes,
       });
     } finally {
       setSaving(false);
@@ -148,26 +157,66 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
             <input type="number" style={field} value={form.price} onChange={e => set('price', e.target.value)} />
           </div>
 
-          {/* Status */}
+          {/* Status (2-Color System: Green for Available, Red for Sold) */}
           <div>
-            <label style={label}>Status</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {STATUSES.map(s => (
-                <button key={s} onClick={() => set('status', s)} style={{
-                  height: '34px', borderRadius: '6px', border: '1px solid var(--df-border)',
-                  background: form.status === s ? 'var(--df-accent)' : 'var(--df-bg)',
-                  color: form.status === s ? '#fff' : 'var(--df-text-muted)',
-                  fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                }}>{s}</button>
+            <label style={label}>Availability Status</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => set('status', 'Available')}
+                style={{
+                  height: '38px', borderRadius: '6px',
+                  border: form.status === 'Available' ? '2px solid #22c55e' : '1px solid #16a34a40',
+                  background: form.status === 'Available' ? '#15803d' : 'rgba(34, 197, 94, 0.08)',
+                  color: form.status === 'Available' ? '#ffffff' : '#22c55e',
+                  fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  boxShadow: form.status === 'Available' ? '0 0 12px rgba(34,197,94,0.3)' : 'none'
+                }}
+              >
+                <span>🟢</span> Available
+              </button>
+              <button
+                type="button"
+                onClick={() => set('status', 'Sold')}
+                style={{
+                  height: '38px', borderRadius: '6px',
+                  border: form.status === 'Sold' ? '2px solid #ef4444' : '1px solid #dc262640',
+                  background: form.status === 'Sold' ? '#b91c1c' : 'rgba(239, 68, 68, 0.08)',
+                  color: form.status === 'Sold' ? '#ffffff' : '#ef4444',
+                  fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  boxShadow: form.status === 'Sold' ? '0 0 12px rgba(239,68,68,0.3)' : 'none'
+                }}
+              >
+                <span>🔴</span> Sold
+              </button>
+            </div>
+            {/* Secondary statuses */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+              {['Reserved', 'Blocked'].map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => set('status', s)}
+                  style={{
+                    height: '26px', borderRadius: '4px', border: '1px solid var(--df-border)',
+                    background: form.status === s ? 'var(--df-card-bg)' : 'transparent',
+                    color: form.status === s ? 'var(--df-text)' : 'var(--df-text-muted)',
+                    fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {s}
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Assign Customer */}
+          {/* Customer Details */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
               <label style={{ ...label, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <User style={{ width: '11px', height: '11px' }} /> Customer
+                <User style={{ width: '11px', height: '11px' }} /> Customer Details
               </label>
               <button
                 type="button"
@@ -178,7 +227,7 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
               </button>
             </div>
 
-            {/* Inline Customer Form */}
+            {/* Direct Customer Inputs or Selector */}
             {showAddCustomer ? (
               <div style={cardStyle}>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text)', marginBottom: '8px' }}>Create Customer Profile</div>
@@ -194,10 +243,49 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
                 </div>
               </div>
             ) : (
-              <select style={sel} value={form.customerId} onChange={e => set('customerId', e.target.value)}>
-                <option value="">— Not Assigned —</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}
-              </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <input
+                  placeholder="Customer Name (e.g. Ramesh Patil)"
+                  style={{ ...field, height: '32px', fontSize: '0.76rem' }}
+                  value={form.customerName}
+                  onChange={e => set('customerName', e.target.value)}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <input
+                    placeholder="Phone Number"
+                    style={{ ...field, height: '32px', fontSize: '0.74rem' }}
+                    value={form.customerPhone}
+                    onChange={e => set('customerPhone', e.target.value)}
+                  />
+                  <input
+                    placeholder="Email Address"
+                    style={{ ...field, height: '32px', fontSize: '0.74rem' }}
+                    value={form.customerEmail}
+                    onChange={e => set('customerEmail', e.target.value)}
+                  />
+                </div>
+                {customers.length > 0 && (
+                  <select
+                    style={{ ...sel, height: '30px', fontSize: '0.72rem', color: 'var(--df-text-muted)' }}
+                    value={form.customerId}
+                    onChange={e => {
+                      const cid = e.target.value;
+                      set('customerId', cid);
+                      if (cid) {
+                        const c = customers.find(item => item.id === cid);
+                        if (c) {
+                          set('customerName', c.name || '');
+                          set('customerPhone', c.phone || '');
+                          set('customerEmail', c.email || '');
+                        }
+                      }
+                    }}
+                  >
+                    <option value="">— Or choose from existing customers —</option>
+                    {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
+                  </select>
+                )}
+              </div>
             )}
           </div>
 
