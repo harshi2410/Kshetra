@@ -20,7 +20,6 @@ const TABS = [
   { id: 'layout',     label: 'Layout Map', path: '/layout',    icon: Map },
   { id: 'plots',      label: 'Plots',      path: '/plots',     icon: TableProperties },
   { id: 'customers',  label: 'Customers',  path: '/customers', icon: Users },
-  { id: 'brokers',    label: 'Brokers',    path: '/brokers',   icon: Award },
   { id: 'payments',   label: 'Payments',   path: '/payments',  icon: CreditCard },
   { id: 'documents',  label: 'Documents',  path: '/documents', icon: FileText },
   { id: 'analytics',  label: 'Analytics',  path: '/analytics', icon: PieChart },

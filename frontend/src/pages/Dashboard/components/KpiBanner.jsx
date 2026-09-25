@@ -21,7 +21,7 @@ export default function KpiBanner({ analyticsData, projectsData, customersData, 
     { label: 'Total Revenue',    value: fmt(overview.totalRevenue || 145000000), icon: TrendingUp, trend: '+18.5% YoY',   up: true  },
     { label: 'Pending',          value: fmt(overview.pendingPayments || 8500000), icon: Clock,  trend: 'Follow up',      up: false },
     { label: 'Documents',        value: documentsData?.length || 4,           icon: FileText,  trend: '100% compliant',  up: true  },
-    { label: 'Brokers',          value: brokersData?.length || 2,             icon: UserCheck, trend: '+2 new',          up: true  },
+    { label: 'Available Plots',  value: Math.max(0, totalPlots - soldPlots),   icon: Grid3x3,   trend: 'Ready for sale',  up: true  },
     { label: 'Occupancy',        value: `${occ}%`,                            icon: Percent,   trend: '+4.2% month',     up: true  },
   ];
 

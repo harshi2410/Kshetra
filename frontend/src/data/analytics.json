@@ -1,22 +1,23 @@
 {
   "overview": {
     "totalRevenue": 145000000,
-    "totalProjects": 3,
+    "totalProjects": 6,
     "totalPlotsSold": 132,
     "totalCustomers": 98,
-    "totalBrokers": 12,
     "pendingPayments": 8500000,
     "revenueGrowth": 18.5,
-    "plotsSoldGrowth": 12.3
+    "plotsSoldGrowth": 12.3,
+    "avgRealizationPerSqft": 2650,
+    "collectionEfficiency": 94.2
   },
   "monthlyRevenue": [
-    { "month": "Jan 2025", "revenue": 8500000, "target": 9000000 },
-    { "month": "Feb 2025", "revenue": 11200000, "target": 10000000 },
-    { "month": "Mar 2025", "revenue": 9800000, "target": 10000000 },
-    { "month": "Apr 2025", "revenue": 13400000, "target": 12000000 },
-    { "month": "May 2025", "revenue": 12100000, "target": 12000000 },
-    { "month": "Jun 2025", "revenue": 15600000, "target": 14000000 },
-    { "month": "Jul 2025", "revenue": 14200000, "target": 14000000 }
+    { "month": "Jan 2025", "revenue": 8500000, "target": 9000000, "plotsSold": 8 },
+    { "month": "Feb 2025", "revenue": 11200000, "target": 10000000, "plotsSold": 12 },
+    { "month": "Mar 2025", "revenue": 9800000, "target": 10000000, "plotsSold": 10 },
+    { "month": "Apr 2025", "revenue": 13400000, "target": 12000000, "plotsSold": 14 },
+    { "month": "May 2025", "revenue": 12100000, "target": 12000000, "plotsSold": 11 },
+    { "month": "Jun 2025", "revenue": 15600000, "target": 14000000, "plotsSold": 16 },
+    { "month": "Jul 2025", "revenue": 14200000, "target": 14000000, "plotsSold": 13 }
   ],
   "plotStatusBreakdown": [
     { "status": "Sold", "count": 132, "percentage": 43.7 },
@@ -24,14 +25,57 @@
     { "status": "Blocked", "count": 12, "percentage": 4.0 },
     { "status": "Reserved", "count": 10, "percentage": 3.3 }
   ],
-  "topBrokers": [
-    { "name": "Suresh Realtors", "deals": 14, "revenue": 8500000 },
-    { "name": "Prime Properties", "deals": 8, "revenue": 4200000 },
-    { "name": "City Realty", "deals": 6, "revenue": 3100000 }
+  "facingDistribution": [
+    { "facing": "East", "count": 110, "revenue": 48000000 },
+    { "facing": "North", "count": 96, "revenue": 44000000 },
+    { "facing": "West", "count": 52, "revenue": 28000000 },
+    { "facing": "South", "count": 44, "revenue": 25000000 }
   ],
   "paymentStatus": [
     { "type": "Completed", "amount": 136500000, "count": 214 },
     { "type": "Pending", "amount": 8500000, "count": 18 },
     { "type": "Overdue", "amount": 2100000, "count": 5 }
+  ],
+  "analyticalDocuments": [
+    {
+      "id": "an_doc_001",
+      "title": "Quarterly Financial Realization & Revenue Audit (Q1 2025)",
+      "category": "Financial Audit",
+      "format": "PDF",
+      "fileSize": "3.4 MB",
+      "generatedDate": "2025-01-31",
+      "status": "Certified",
+      "summary": "Consolidated cash inflows, receivable aging analysis, and revenue recognition across all active plotting layouts."
+    },
+    {
+      "id": "an_doc_002",
+      "title": "UDCPR 2020 Statutory Land Utilization & Open Space Audit",
+      "category": "Regulatory Compliance",
+      "format": "PDF",
+      "fileSize": "4.8 MB",
+      "generatedDate": "2025-02-15",
+      "status": "Verified",
+      "summary": "Detailed topological subtraction report proving 10% open space, 5% amenity handover, and 9.0M road corridors compliance."
+    },
+    {
+      "id": "an_doc_003",
+      "title": "Plot Inventory Yield & Velocity Analysis Schedule",
+      "category": "Sales Intelligence",
+      "format": "XLSX / CSV",
+      "fileSize": "1.8 MB",
+      "generatedDate": "2025-02-28",
+      "status": "Live Feed",
+      "summary": "Plot-by-plot valuation schedule, price per sqft metrics, corner plot premiums, and days on market velocity."
+    },
+    {
+      "id": "an_doc_004",
+      "title": "Customer Receivable Aging & Payment Milestone Schedule",
+      "category": "Collections & Accounts",
+      "format": "PDF",
+      "fileSize": "2.6 MB",
+      "generatedDate": "2025-03-01",
+      "status": "Certified",
+      "summary": "Milestone-wise installment due tracker with bank transaction references and demand notices."
+    }
   ]
 }

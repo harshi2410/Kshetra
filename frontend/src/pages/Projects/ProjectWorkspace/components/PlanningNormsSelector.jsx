@@ -45,7 +45,6 @@ export default function PlanningNormsSelector({
         if (res?.authorities?.length > 0) {
           setJurisdictions(res.authorities);
         } else {
-          // Fallback authorities
           setJurisdictions([
             { id: 'IN_MH_PMC', name: 'Pune Municipal Corporation (PMC)', shortName: 'PMC Pune' },
             { id: 'IN_MH_PCMC', name: 'Pimpri-Chinchwad Municipal Corporation (PCMC)', shortName: 'PCMC' },
@@ -116,13 +115,13 @@ export default function PlanningNormsSelector({
 
   return (
     <div style={{
-      background: 'var(--df-card-bg, #0f172a)',
-      border: '1px solid var(--df-card-border, #1e293b)',
-      borderRadius: '10px',
-      padding: isExpanded ? '14px 18px' : '10px 16px',
+      background: 'var(--df-card-bg, #ffffff)',
+      border: '1px solid var(--df-card-border, #e2e8f0)',
+      borderRadius: '8px',
+      padding: isExpanded ? '14px 18px' : '10px 14px',
       marginBottom: '10px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-      transition: 'all 0.2s ease'
+      boxShadow: 'var(--df-shadow-xs)',
+      transition: 'all 0.15s ease'
     }}>
       {/* Sleek Collapsed Single-Line Header */}
       {!isExpanded ? (
@@ -137,23 +136,23 @@ export default function PlanningNormsSelector({
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <div style={{
               width: '28px', height: '28px', borderRadius: '6px',
-              background: 'rgba(37,99,235,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', flexShrink: 0
+              background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--df-accent, #9f1239)', border: '1px solid rgba(159, 18, 57, 0.2)', flexShrink: 0
             }}>
               <Building2 style={{ width: '15px', height: '15px' }} />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#f8fafc' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--df-text, #0f172a)' }}>
                 {currentAuthName}
               </span>
               <span style={{
-                fontSize: '0.66rem', fontWeight: 800, padding: '1px 7px', borderRadius: '10px',
-                background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
+                fontSize: '0.66rem', fontWeight: 800, padding: '1px 7px', borderRadius: '4px',
+                background: 'var(--df-success-soft, rgba(22, 163, 74, 0.1))', color: 'var(--df-success, #16a34a)', border: '1px solid rgba(22, 163, 74, 0.25)'
               }}>
                 UDCPR 2020 Compliant
               </span>
-              <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+              <span style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)' }}>
                 • {landUse === 'RESIDENTIAL' ? 'Residential' : landUse}
               </span>
             </div>
@@ -161,26 +160,26 @@ export default function PlanningNormsSelector({
             {/* Quick Metrics Badges in Row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <span style={{
-                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
-                background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 700
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
+                background: 'var(--df-success-soft, rgba(22, 163, 74, 0.1))', color: 'var(--df-success, #16a34a)', border: '1px solid rgba(22, 163, 74, 0.25)', fontWeight: 700
               }}>
                 🌿 Open Space: {evaluatedNorms?.openSpacePercentage || 10}%
               </span>
               <span style={{
-                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
-                background: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.25)', fontWeight: 700
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
+                background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.08))', color: 'var(--df-accent, #9f1239)', border: '1px solid rgba(159, 18, 57, 0.2)', fontWeight: 700
               }}>
                 🏢 Amenity: {evaluatedNorms?.amenitySpacePercentage || 5}%
               </span>
               <span style={{
-                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
-                background: 'rgba(148, 163, 184, 0.12)', color: '#cbd5e1', border: '1px solid rgba(148, 163, 184, 0.25)', fontWeight: 700
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
+                background: 'var(--df-bg, #f8fafc)', color: 'var(--df-text-soft, #334155)', border: '1px solid var(--df-border, #e2e8f0)', fontWeight: 700
               }}>
                 🛣️ Road: {evaluatedNorms?.internalRoadWidthM || 9}M ({evaluatedNorms?.internalRoadWidthFt || 29.5}')
               </span>
               <span style={{
-                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '6px',
-                background: 'rgba(234, 179, 8, 0.12)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.25)', fontWeight: 700
+                fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
+                background: 'var(--df-bg, #f8fafc)', color: 'var(--df-text, #0f172a)', border: '1px solid var(--df-border, #e2e8f0)', fontWeight: 700
               }}>
                 📐 Min Plot: {evaluatedNorms?.minPlotAreaSqm || 100} m²
               </span>
@@ -193,8 +192,8 @@ export default function PlanningNormsSelector({
               onClick={() => setIsExpanded(true)}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px',
-                borderRadius: '6px', border: '1px solid #334155', background: '#1e293b',
-                color: '#cbd5e1', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
+                borderRadius: '6px', border: '1px solid var(--df-border, #e2e8f0)', background: 'var(--df-bg, #f8fafc)',
+                color: 'var(--df-text, #0f172a)', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
               }}
             >
               <Sliders style={{ width: '13px', height: '13px' }} /> Configure Norms <ChevronDown style={{ width: '12px', height: '12px' }} />
@@ -205,10 +204,10 @@ export default function PlanningNormsSelector({
               disabled={isGenerating}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px',
-                borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                borderRadius: '6px', background: 'var(--df-accent, #9f1239)',
                 color: '#ffffff', fontWeight: 800, fontSize: '0.76rem', border: 'none',
                 cursor: isGenerating ? 'not-allowed' : 'pointer',
-                boxShadow: '0 2px 10px rgba(37,99,235,0.3)',
+                boxShadow: 'var(--df-shadow-xs)',
                 opacity: isGenerating ? 0.7 : 1
               }}
             >
@@ -224,26 +223,26 @@ export default function PlanningNormsSelector({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
-                width: '32px', height: '32px', borderRadius: '8px',
-                background: 'rgba(37,99,235,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)'
+                width: '32px', height: '32px', borderRadius: '6px',
+                background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--df-accent, #9f1239)', border: '1px solid rgba(159, 18, 57, 0.2)'
               }}>
                 <Building2 style={{ width: '16px', height: '16px' }} />
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h3 style={{ fontSize: '0.90rem', fontWeight: 800, margin: 0, color: '#f8fafc' }}>
+                  <h3 style={{ fontSize: '0.90rem', fontWeight: 800, margin: 0, color: 'var(--df-text, #0f172a)' }}>
                     Maharashtra Planning Authority & UDCPR Regulations
                   </h3>
                   <span style={{
-                    fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px',
-                    background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
+                    fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                    background: 'var(--df-success-soft, rgba(22, 163, 74, 0.1))', color: 'var(--df-success, #16a34a)', border: '1px solid rgba(22, 163, 74, 0.25)'
                   }}>
                     UDCPR 2020 Compliant
                   </span>
                 </div>
-                <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '2px 0 0 0' }}>
-                  Configure jurisdiction and development norms before generating 2–3 alternative plotting layouts (13A–13O)
+                <p style={{ fontSize: '0.72rem', color: 'var(--df-text-muted, #64748b)', margin: '2px 0 0 0' }}>
+                  Configure jurisdiction and development norms before generating 2–3 alternative plotting layouts
                 </p>
               </div>
             </div>
@@ -253,8 +252,8 @@ export default function PlanningNormsSelector({
                 onClick={() => setIsExpanded(false)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 10px',
-                  borderRadius: '6px', border: '1px solid #334155', background: '#1e293b',
-                  color: '#cbd5e1', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
+                  borderRadius: '6px', border: '1px solid var(--df-border, #e2e8f0)', background: 'var(--df-bg, #f8fafc)',
+                  color: 'var(--df-text, #0f172a)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
                 }}
               >
                 <ChevronUp style={{ width: '12px', height: '12px' }} /> Collapse
@@ -265,10 +264,10 @@ export default function PlanningNormsSelector({
                 disabled={isGenerating}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px',
-                  borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  borderRadius: '6px', background: 'var(--df-accent, #9f1239)',
                   color: '#ffffff', fontWeight: 800, fontSize: '0.78rem', border: 'none',
                   cursor: isGenerating ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 3px 12px rgba(37,99,235,0.35)',
+                  boxShadow: 'var(--df-shadow-xs)',
                   opacity: isGenerating ? 0.7 : 1
                 }}
               >
@@ -284,13 +283,13 @@ export default function PlanningNormsSelector({
             gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
             gap: '10px',
             padding: '10px 12px',
-            background: 'rgba(15, 23, 42, 0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
-            borderRadius: '8px',
+            background: 'var(--df-bg, #f8fafc)',
+            border: '1px solid var(--df-border, #e2e8f0)',
+            borderRadius: '6px',
             marginBottom: '10px'
           }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--df-text-muted, #64748b)', marginBottom: '3px', textTransform: 'uppercase' }}>
                 Jurisdiction
               </label>
               <select
@@ -298,8 +297,8 @@ export default function PlanningNormsSelector({
                 onChange={(e) => setSelectedJurisdiction(e.target.value)}
                 style={{
                   width: '100%', padding: '6px 8px', borderRadius: '5px',
-                  background: '#090e17', border: '1px solid #334155',
-                  color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600
+                  background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #cbd5e1)',
+                  color: 'var(--df-text, #0f172a)', fontSize: '0.75rem', fontWeight: 600
                 }}
               >
                 {jurisdictions.map((j) => (
@@ -311,7 +310,7 @@ export default function PlanningNormsSelector({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--df-text-muted, #64748b)', marginBottom: '3px', textTransform: 'uppercase' }}>
                 City / Area
               </label>
               <input
@@ -321,14 +320,14 @@ export default function PlanningNormsSelector({
                 placeholder="Enter City / District"
                 style={{
                   width: '100%', padding: '6px 8px', borderRadius: '5px',
-                  background: '#090e17', border: '1px solid #334155',
-                  color: '#f8fafc', fontSize: '0.75rem'
+                  background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #cbd5e1)',
+                  color: 'var(--df-text, #0f172a)', fontSize: '0.75rem'
                 }}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--df-text-muted, #64748b)', marginBottom: '3px', textTransform: 'uppercase' }}>
                 Land Use
               </label>
               <select
@@ -336,8 +335,8 @@ export default function PlanningNormsSelector({
                 onChange={(e) => setLandUse(e.target.value)}
                 style={{
                   width: '100%', padding: '6px 8px', borderRadius: '5px',
-                  background: '#090e17', border: '1px solid #334155',
-                  color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600
+                  background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #cbd5e1)',
+                  color: 'var(--df-text, #0f172a)', fontSize: '0.75rem', fontWeight: 600
                 }}
               >
                 <option value="RESIDENTIAL">Residential (UDCPR 100 m²)</option>
@@ -348,7 +347,7 @@ export default function PlanningNormsSelector({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', marginBottom: '3px', textTransform: 'uppercase' }}>
+              <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--df-text-muted, #64748b)', marginBottom: '3px', textTransform: 'uppercase' }}>
                 Planning Regulation
               </label>
               <select
@@ -356,8 +355,8 @@ export default function PlanningNormsSelector({
                 onChange={(e) => setPlanningRegulation(e.target.value)}
                 style={{
                   width: '100%', padding: '6px 8px', borderRadius: '5px',
-                  background: '#090e17', border: '1px solid #334155',
-                  color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600
+                  background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #cbd5e1)',
+                  color: 'var(--df-text, #0f172a)', fontSize: '0.75rem', fontWeight: 600
                 }}
               >
                 <option value="UDCPR_2020">Applicable UDCPR 2020 (Current)</option>
@@ -367,12 +366,12 @@ export default function PlanningNormsSelector({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', marginTop: '16px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#cbd5e1', cursor: 'pointer', userSelect: 'none' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: 'var(--df-text, #0f172a)', cursor: 'pointer', userSelect: 'none' }}>
                 <input
                   type="checkbox"
                   checked={isCongested}
                   onChange={(e) => setIsCongested(e.target.checked)}
-                  style={{ accentColor: '#2563eb', cursor: 'pointer' }}
+                  style={{ accentColor: 'var(--df-accent, #9f1239)', cursor: 'pointer' }}
                 />
                 Gaothan / Congested Core (Rule 3.3.1: 6.0m Roads)
               </label>
@@ -386,62 +385,62 @@ export default function PlanningNormsSelector({
               gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
               gap: '8px'
             }}>
-              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontSize: '0.68rem', fontWeight: 700 }}>
+              <div style={{ background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #e2e8f0)', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--df-success, #16a34a)', fontSize: '0.68rem', fontWeight: 700 }}>
                   <Trees style={{ width: '13px', height: '13px' }} /> Open Space (Rule 3.4)
                 </div>
-                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', marginTop: '2px' }}>
                   {evaluatedNorms.openSpacePercentage}%
                 </div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--df-text-muted, #64748b)' }}>
                   {evaluatedNorms.allocatedOpenSpaceSqm?.toFixed(0)} m² ({evaluatedNorms.allocatedOpenSpaceSqft?.toFixed(0)} sqft)
                 </div>
               </div>
 
-              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#3b82f6', fontSize: '0.68rem', fontWeight: 700 }}>
+              <div style={{ background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #e2e8f0)', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--df-accent, #9f1239)', fontSize: '0.68rem', fontWeight: 700 }}>
                   <Building2 style={{ width: '13px', height: '13px' }} /> Amenity Space (Rule 3.5)
                 </div>
-                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', marginTop: '2px' }}>
                   {evaluatedNorms.amenitySpacePercentage}%
                 </div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--df-text-muted, #64748b)' }}>
                   {evaluatedNorms.allocatedAmenitySqm?.toFixed(0)} m²
                 </div>
               </div>
 
-              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+              <div style={{ background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #e2e8f0)', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--df-text-muted, #64748b)', fontSize: '0.68rem', fontWeight: 700 }}>
                   <Compass style={{ width: '13px', height: '13px' }} /> Road Corridor (Rule 3.3)
                 </div>
-                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
-                  {evaluatedNorms.internalRoadWidthM} M <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>({evaluatedNorms.internalRoadWidthFt} FT)</span>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', marginTop: '2px' }}>
+                  {evaluatedNorms.internalRoadWidthM} M <span style={{ fontSize: '0.72rem', color: 'var(--df-text-muted, #64748b)' }}>({evaluatedNorms.internalRoadWidthFt} FT)</span>
                 </div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--df-text-muted, #64748b)' }}>
                   Main: {evaluatedNorms.mainRoadWidthM} M ({evaluatedNorms.mainRoadWidthFt} FT)
                 </div>
               </div>
 
-              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#f59e0b', fontSize: '0.68rem', fontWeight: 700 }}>
+              <div style={{ background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #e2e8f0)', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#d97706', fontSize: '0.68rem', fontWeight: 700 }}>
                   <Home style={{ width: '13px', height: '13px' }} /> Min Plot & Frontage
                 </div>
-                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
-                  {evaluatedNorms.minPlotAreaSqm} m² <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>({evaluatedNorms.minPlotAreaSqft} sqft)</span>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', marginTop: '2px' }}>
+                  {evaluatedNorms.minPlotAreaSqm} m² <span style={{ fontSize: '0.72rem', color: 'var(--df-text-muted, #64748b)' }}>({evaluatedNorms.minPlotAreaSqft} sqft)</span>
                 </div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--df-text-muted, #64748b)' }}>
                   Frontage: {evaluatedNorms.minFrontageM} M ({evaluatedNorms.minFrontageFt} FT)
                 </div>
               </div>
 
-              <div style={{ background: '#090e17', border: '1px solid #1e293b', borderRadius: '6px', padding: '8px 10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#a855f7', fontSize: '0.68rem', fontWeight: 700 }}>
+              <div style={{ background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #e2e8f0)', borderRadius: '6px', padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--df-accent, #9f1239)', fontSize: '0.68rem', fontWeight: 700 }}>
                   <Zap style={{ width: '13px', height: '13px' }} /> Peripheral Setback
                 </div>
-                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
-                  {evaluatedNorms.outerBoundarySetbackM} M <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>({evaluatedNorms.outerBoundarySetbackFt} FT)</span>
+                <div style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', marginTop: '2px' }}>
+                  {evaluatedNorms.outerBoundarySetbackM} M <span style={{ fontSize: '0.72rem', color: 'var(--df-text-muted, #64748b)' }}>({evaluatedNorms.outerBoundarySetbackFt} FT)</span>
                 </div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--df-text-muted, #64748b)' }}>
                   UDCPR Rule 6.1 boundary buffer
                 </div>
               </div>

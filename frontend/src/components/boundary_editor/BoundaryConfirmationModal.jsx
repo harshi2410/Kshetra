@@ -502,9 +502,9 @@ export default function BoundaryConfirmationModal({
       boxSizing: 'border-box'
     }}>
       <div style={{
-        background: '#0a101d',
-        border: '1px solid #1e293b',
-        borderRadius: '16px',
+        background: 'var(--df-card-bg, #ffffff)',
+        border: '1px solid var(--df-card-border, #e2e8f0)',
+        borderRadius: '12px',
         width: '100%',
         maxWidth: '1280px',
         height: '94vh',
@@ -512,13 +512,13 @@ export default function BoundaryConfirmationModal({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        boxShadow: '0 30px 80px rgba(0, 0, 0, 0.85)'
+        boxShadow: 'var(--df-shadow-lg, 0 20px 50px rgba(0, 0, 0, 0.25))'
       }}>
         {/* Top Header */}
         <div style={{
-          padding: '12px 18px',
-          borderBottom: '1px solid #1e293b',
-          background: '#0f172a',
+          padding: '14px 20px',
+          borderBottom: '1px solid var(--df-border, #e2e8f0)',
+          background: 'var(--df-card-bg, #ffffff)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -528,34 +528,35 @@ export default function BoundaryConfirmationModal({
             <div style={{
               width: '36px',
               height: '36px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+              borderRadius: '8px',
+              background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.1))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff',
+              color: 'var(--df-accent, #9f1239)',
+              border: '1px solid rgba(159, 18, 57, 0.2)',
               flexShrink: 0
             }}>
               <ShieldCheck style={{ width: '20px', height: '20px' }} />
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#f8fafc', margin: 0, letterSpacing: '0.01em' }}>
-                  LAND BOUNDARY VERIFICATION & LOCK
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', margin: 0, letterSpacing: '-0.01em', fontFamily: 'var(--font-display)' }}>
+                  Land Boundary Verification & Geometry Lock
                 </h2>
                 <span style={{
                   fontSize: '0.68rem',
                   fontWeight: 800,
                   padding: '2px 8px',
                   borderRadius: '12px',
-                  background: isLocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                  color: isLocked ? '#34d399' : '#60a5fa',
-                  border: `1px solid ${isLocked ? '#10b981' : '#3b82f6'}`
+                  background: isLocked ? 'var(--df-success-soft, rgba(22, 163, 74, 0.1))' : 'var(--df-accent-soft, rgba(159, 18, 57, 0.1))',
+                  color: isLocked ? 'var(--df-success, #16a34a)' : 'var(--df-accent, #9f1239)',
+                  border: `1px solid ${isLocked ? 'rgba(22, 163, 74, 0.3)' : 'rgba(159, 18, 57, 0.3)'}`
                 }}>
                   {isLocked ? 'BOUNDARY LOCKED' : 'CONFIRMATION REQUIRED'}
                 </span>
               </div>
-              <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <p style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 The outer boundary is a hard geometric constraint. 2D layouts will generate strictly inside this shape.
               </p>
             </div>
@@ -566,10 +567,10 @@ export default function BoundaryConfirmationModal({
             style={{
               width: '32px',
               height: '32px',
-              borderRadius: '8px',
-              border: '1px solid #334155',
-              background: '#1e293b',
-              color: '#94a3b8',
+              borderRadius: '6px',
+              border: '1px solid var(--df-border, #e2e8f0)',
+              background: 'var(--df-bg, #f8fafc)',
+              color: 'var(--df-text-muted, #64748b)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -584,8 +585,8 @@ export default function BoundaryConfirmationModal({
         {/* Mobile View Tab Switcher (Visible on mobile/tablet) */}
         <div className="boundary-mobile-tabs" style={{
           display: 'none',
-          background: '#070c16',
-          borderBottom: '1px solid #1e293b',
+          background: 'var(--df-bg, #f8fafc)',
+          borderBottom: '1px solid var(--df-border, #e2e8f0)',
           padding: '6px 12px',
           gap: '6px'
         }}>
@@ -593,9 +594,9 @@ export default function BoundaryConfirmationModal({
             onClick={() => setActiveMobileTab('CANVAS')}
             style={{
               flex: 1, padding: '7px 4px', fontSize: '0.74rem', fontWeight: 700, borderRadius: '6px',
-              border: activeMobileTab === 'CANVAS' ? '1px solid #3b82f6' : '1px solid #1e293b',
-              background: activeMobileTab === 'CANVAS' ? '#1e3a8a' : '#0f172a',
-              color: activeMobileTab === 'CANVAS' ? '#93c5fd' : '#94a3b8'
+              border: activeMobileTab === 'CANVAS' ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
+              background: activeMobileTab === 'CANVAS' ? 'var(--df-accent-soft)' : 'var(--df-card-bg)',
+              color: activeMobileTab === 'CANVAS' ? 'var(--df-accent)' : 'var(--df-text-muted)'
             }}
           >
             Canvas & Draw
@@ -604,9 +605,9 @@ export default function BoundaryConfirmationModal({
             onClick={() => setActiveMobileTab('PARAMS')}
             style={{
               flex: 1, padding: '7px 4px', fontSize: '0.74rem', fontWeight: 700, borderRadius: '6px',
-              border: activeMobileTab === 'PARAMS' ? '1px solid #3b82f6' : '1px solid #1e293b',
-              background: activeMobileTab === 'PARAMS' ? '#1e3a8a' : '#0f172a',
-              color: activeMobileTab === 'PARAMS' ? '#93c5fd' : '#94a3b8'
+              border: activeMobileTab === 'PARAMS' ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
+              background: activeMobileTab === 'PARAMS' ? 'var(--df-accent-soft)' : 'var(--df-card-bg)',
+              color: activeMobileTab === 'PARAMS' ? 'var(--df-accent)' : 'var(--df-text-muted)'
             }}
           >
             Tuning & Specs
@@ -615,9 +616,9 @@ export default function BoundaryConfirmationModal({
             onClick={() => setActiveMobileTab('COORDS')}
             style={{
               flex: 1, padding: '7px 4px', fontSize: '0.74rem', fontWeight: 700, borderRadius: '6px',
-              border: activeMobileTab === 'COORDS' ? '1px solid #3b82f6' : '1px solid #1e293b',
-              background: activeMobileTab === 'COORDS' ? '#1e3a8a' : '#0f172a',
-              color: activeMobileTab === 'COORDS' ? '#93c5fd' : '#94a3b8'
+              border: activeMobileTab === 'COORDS' ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
+              background: activeMobileTab === 'COORDS' ? 'var(--df-accent-soft)' : 'var(--df-card-bg)',
+              color: activeMobileTab === 'COORDS' ? 'var(--df-accent)' : 'var(--df-text-muted)'
             }}
           >
             Points ({polygon.length})
@@ -627,8 +628,8 @@ export default function BoundaryConfirmationModal({
         {/* Toolbar & Status Strip */}
         <div style={{
           padding: '8px 16px',
-          background: '#090e17',
-          borderBottom: '1px solid #1e293b',
+          background: 'var(--df-bg, #f8fafc)',
+          borderBottom: '1px solid var(--df-border, #e2e8f0)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -642,10 +643,10 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                border: activeTool === 'MOVE' ? '1px solid #3b82f6' : '1px solid #334155',
-                background: activeTool === 'MOVE' ? '#1e3a8a' : '#1e293b',
-                color: activeTool === 'MOVE' ? '#93c5fd' : '#cbd5e1',
-                cursor: 'pointer'
+                border: activeTool === 'MOVE' ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
+                background: activeTool === 'MOVE' ? 'var(--df-accent)' : 'var(--df-card-bg)',
+                color: activeTool === 'MOVE' ? '#ffffff' : 'var(--df-text)',
+                cursor: 'pointer', transition: 'all 0.15s ease'
               }}
               title="Drag and reposition polygon vertices"
             >
@@ -657,10 +658,10 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                border: activeTool === 'ADD' ? '1px solid #3b82f6' : '1px solid #334155',
-                background: activeTool === 'ADD' ? '#1e3a8a' : '#1e293b',
-                color: activeTool === 'ADD' ? '#93c5fd' : '#cbd5e1',
-                cursor: 'pointer'
+                border: activeTool === 'ADD' ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
+                background: activeTool === 'ADD' ? 'var(--df-accent)' : 'var(--df-card-bg)',
+                color: activeTool === 'ADD' ? '#ffffff' : 'var(--df-text)',
+                cursor: 'pointer', transition: 'all 0.15s ease'
               }}
               title="Click on edge to insert new vertex"
             >
@@ -672,10 +673,10 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                border: activeTool === 'DELETE' ? '1px solid #ef4444' : '1px solid #334155',
-                background: activeTool === 'DELETE' ? '#7f1d1d' : '#1e293b',
-                color: activeTool === 'DELETE' ? '#fca5a5' : '#cbd5e1',
-                cursor: 'pointer'
+                border: activeTool === 'DELETE' ? '1px solid var(--df-danger)' : '1px solid var(--df-border)',
+                background: activeTool === 'DELETE' ? 'var(--df-danger)' : 'var(--df-card-bg)',
+                color: activeTool === 'DELETE' ? '#ffffff' : 'var(--df-text)',
+                cursor: 'pointer', transition: 'all 0.15s ease'
               }}
               title="Click a vertex node to remove it"
             >
@@ -687,17 +688,17 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                border: activeTool === 'DRAW' ? '1px solid #10b981' : '1px solid #334155',
-                background: activeTool === 'DRAW' ? '#064e3b' : '#1e293b',
-                color: activeTool === 'DRAW' ? '#6ee7b7' : '#cbd5e1',
-                cursor: 'pointer'
+                border: activeTool === 'DRAW' ? '1px solid var(--df-success)' : '1px solid var(--df-border)',
+                background: activeTool === 'DRAW' ? 'var(--df-success)' : 'var(--df-card-bg)',
+                color: activeTool === 'DRAW' ? '#ffffff' : 'var(--df-text)',
+                cursor: 'pointer', transition: 'all 0.15s ease'
               }}
               title="Click freely to construct polygon"
             >
               <PenTool style={{ width: '13px', height: '13px' }} /> Draw
             </button>
 
-            <div style={{ width: '1px', height: '20px', background: '#334155', margin: '0 2px' }} />
+            <div style={{ width: '1px', height: '20px', background: 'var(--df-border)', margin: '0 2px' }} />
 
             <button
               onClick={handleUndo}
@@ -705,7 +706,7 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '4px',
                 padding: '6px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
-                border: '1px solid #334155', background: '#1e293b', color: history.length > 1 ? '#cbd5e1' : '#64748b',
+                border: '1px solid var(--df-border)', background: 'var(--df-card-bg)', color: history.length > 1 ? 'var(--df-text)' : 'var(--df-text-muted)',
                 cursor: history.length > 1 ? 'pointer' : 'not-allowed'
               }}
             >
@@ -716,7 +717,7 @@ export default function BoundaryConfirmationModal({
               onClick={handleReset}
               style={{
                 padding: '6px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
-                border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
+                border: '1px solid var(--df-border)', background: 'var(--df-card-bg)', color: 'var(--df-text)', cursor: 'pointer'
               }}
             >
               Reset
@@ -728,7 +729,7 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                border: '1px solid #3b82f6', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa',
+                border: '1px solid var(--df-accent)', background: 'var(--df-accent-soft)', color: 'var(--df-accent)',
                 cursor: detecting ? 'wait' : 'pointer'
               }}
             >
@@ -740,9 +741,9 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '6px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                border: showTuning ? '1px solid #38bdf8' : '1px solid #334155',
-                background: showTuning ? '#075985' : '#1e293b',
-                color: showTuning ? '#bae6fd' : '#cbd5e1',
+                border: showTuning ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
+                background: showTuning ? 'var(--df-accent-soft)' : 'var(--df-card-bg)',
+                color: showTuning ? 'var(--df-accent)' : 'var(--df-text)',
                 cursor: 'pointer'
               }}
             >
@@ -759,7 +760,7 @@ export default function BoundaryConfirmationModal({
               style={{
                 display: 'flex', alignItems: 'center', gap: '4px',
                 padding: '5px 8px', borderRadius: '6px', fontSize: '0.72rem',
-                border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
+                border: '1px solid var(--df-border)', background: 'var(--df-card-bg)', color: 'var(--df-text)', cursor: 'pointer'
               }}
             >
               <Maximize2 style={{ width: '12px', height: '12px' }} /> Fit
@@ -767,8 +768,8 @@ export default function BoundaryConfirmationModal({
             <button
               onClick={() => setScale(s => Math.min(s * 1.25, 5.0))}
               style={{
-                padding: '5px 8px', borderRadius: '6px', border: '1px solid #334155',
-                background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
+                padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--df-border)',
+                background: 'var(--df-card-bg)', color: 'var(--df-text)', cursor: 'pointer'
               }}
             >
               <ZoomIn style={{ width: '13px', height: '13px' }} />
@@ -776,8 +777,8 @@ export default function BoundaryConfirmationModal({
             <button
               onClick={() => setScale(s => Math.max(s / 1.25, 0.2))}
               style={{
-                padding: '5px 8px', borderRadius: '6px', border: '1px solid #334155',
-                background: '#1e293b', color: '#cbd5e1', cursor: 'pointer'
+                padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--df-border)',
+                background: 'var(--df-card-bg)', color: 'var(--df-text)', cursor: 'pointer'
               }}
             >
               <ZoomOut style={{ width: '13px', height: '13px' }} />
@@ -1019,8 +1020,8 @@ export default function BoundaryConfirmationModal({
             style={{
               width: '350px',
               maxWidth: '100%',
-              background: '#090e17',
-              borderLeft: '1px solid #1e293b',
+              background: 'var(--df-card-bg, #ffffff)',
+              borderLeft: '1px solid var(--df-border, #e2e8f0)',
               padding: '16px',
               display: 'flex',
               flexDirection: 'column',
@@ -1030,47 +1031,47 @@ export default function BoundaryConfirmationModal({
             }}
           >
             <div>
-              <h3 style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 12px 0' }}>
+              <h3 style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', margin: '0 0 12px 0', fontFamily: 'var(--font-display)' }}>
                 GEOMETRIC CHARACTERISTICS
               </h3>
 
               <div style={{
-                background: '#0f172a',
-                border: '1px solid #1e293b',
-                borderRadius: '10px',
+                background: 'var(--df-bg, #f8fafc)',
+                border: '1px solid var(--df-border, #e2e8f0)',
+                borderRadius: '8px',
                 padding: '12px',
                 marginBottom: '14px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Shape Geometry:</span>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)' }}>Shape Geometry:</span>
                   <span style={{
-                    fontSize: '0.74rem', fontWeight: 800, color: '#60a5fa',
-                    background: 'rgba(59, 130, 246, 0.1)', padding: '2px 8px', borderRadius: '6px'
+                    fontSize: '0.74rem', fontWeight: 800, color: 'var(--df-accent, #9f1239)',
+                    background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.1))', padding: '2px 8px', borderRadius: '4px'
                   }}>
                     {meta.shapeType}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Enclosed Area:</span>
-                  <strong style={{ fontSize: '0.80rem', color: '#f8fafc' }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)' }}>Enclosed Area:</span>
+                  <strong style={{ fontSize: '0.80rem', color: 'var(--df-text, #0f172a)' }}>
                     {meta.areaSqft.toLocaleString()} sq.ft ({(meta.areaSqft / 43560).toFixed(2)} acres)
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Total Perimeter:</span>
-                  <strong style={{ fontSize: '0.80rem', color: '#f8fafc' }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)' }}>Total Perimeter:</span>
+                  <strong style={{ fontSize: '0.80rem', color: 'var(--df-text, #0f172a)' }}>
                     {meta.perimeterFt.toLocaleString()} ft
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Boundary Vertices:</span>
-                  <strong style={{ fontSize: '0.80rem', color: '#38bdf8' }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)' }}>Boundary Vertices:</span>
+                  <strong style={{ fontSize: '0.80rem', color: 'var(--df-accent, #9f1239)' }}>
                     {polygon.length} Points
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Detection Confidence:</span>
-                  <strong style={{ fontSize: '0.80rem', color: '#34d399' }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--df-text-muted, #64748b)' }}>Detection Confidence:</span>
+                  <strong style={{ fontSize: '0.80rem', color: 'var(--df-success, #16a34a)' }}>
                     {Math.round(meta.confidence * 100)}%
                   </strong>
                 </div>
@@ -1078,56 +1079,56 @@ export default function BoundaryConfirmationModal({
 
               {/* Strict Notice */}
               <div style={{
-                background: 'rgba(234, 179, 8, 0.08)',
-                border: '1px solid rgba(234, 179, 8, 0.3)',
-                borderRadius: '10px',
+                background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.08))',
+                border: '1px solid rgba(159, 18, 57, 0.2)',
+                borderRadius: '8px',
                 padding: '10px 12px',
                 marginBottom: '14px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#facc15', fontSize: '0.75rem', fontWeight: 800, marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--df-accent, #9f1239)', fontSize: '0.75rem', fontWeight: 800, marginBottom: '4px' }}>
                   <AlertTriangle style={{ width: '15px', height: '15px' }} />
-                  HARD GEOMETRIC LOCK
+                  HARD GEOMETRIC CONSTRAINT
                 </div>
-                <p style={{ margin: 0, fontSize: '0.71rem', color: '#cbd5e1', lineHeight: '1.45' }}>
-                  Once locked, this outer contour is strictly preserved. All roads, open spaces, and 2D plots will generate inside this exact boundary.
+                <p style={{ margin: 0, fontSize: '0.71rem', color: 'var(--df-text, #0f172a)', lineHeight: '1.45' }}>
+                  Once confirmed, this outer contour is strictly preserved. All internal roads, green open spaces, and 2D plots will generate inside this exact boundary.
                 </p>
               </div>
 
               {/* Edit Selected Vertex Manually */}
               {selectedVertexIndex !== null && polygon[selectedVertexIndex] && (
                 <div style={{
-                  background: '#071529',
-                  border: '1px solid #1e3a8a',
-                  borderRadius: '8px',
+                  background: 'var(--df-bg, #f8fafc)',
+                  border: '1px solid var(--df-border, #e2e8f0)',
+                  borderRadius: '6px',
                   padding: '10px',
                   marginBottom: '12px'
                 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#60a5fa', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-accent, #9f1239)', marginBottom: '6px' }}>
                     Edit Node P{selectedVertexIndex + 1} Coordinates:
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '0.66rem', color: '#94a3b8' }}>X (ft):</label>
+                      <label style={{ fontSize: '0.66rem', color: 'var(--df-text-muted, #64748b)' }}>X (ft):</label>
                       <input
                         type="number"
                         value={manualX}
                         onChange={e => setManualX(e.target.value)}
-                        style={{ width: '100%', height: '28px', background: '#0f172a', border: '1px solid #334155', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', padding: '0 6px' }}
+                        style={{ width: '100%', height: '28px', background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #cbd5e1)', borderRadius: '4px', color: 'var(--df-text, #0f172a)', fontSize: '0.72rem', padding: '0 6px' }}
                       />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '0.66rem', color: '#94a3b8' }}>Y (ft):</label>
+                      <label style={{ fontSize: '0.66rem', color: 'var(--df-text-muted, #64748b)' }}>Y (ft):</label>
                       <input
                         type="number"
                         value={manualY}
                         onChange={e => setManualY(e.target.value)}
-                        style={{ width: '100%', height: '28px', background: '#0f172a', border: '1px solid #334155', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', padding: '0 6px' }}
+                        style={{ width: '100%', height: '28px', background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-border, #cbd5e1)', borderRadius: '4px', color: 'var(--df-text, #0f172a)', fontSize: '0.72rem', padding: '0 6px' }}
                       />
                     </div>
                     <button
                       onClick={handleUpdateSelectedVertex}
                       style={{
-                        height: '28px', marginTop: '14px', padding: '0 10px', background: '#2563eb', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
+                        height: '28px', marginTop: '14px', padding: '0 10px', background: 'var(--df-accent, #9f1239)', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
                       }}
                     >
                       Set
@@ -1138,19 +1139,19 @@ export default function BoundaryConfirmationModal({
 
               {/* Vertex Coordinates List */}
               <div style={{ marginBottom: '14px' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', marginBottom: '6px' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text-muted, #64748b)', marginBottom: '6px' }}>
                   Polygon Coordinate Nodes:
                 </div>
                 <div style={{
                   maxHeight: '130px',
                   overflowY: 'auto',
-                  background: '#030712',
-                  border: '1px solid #1e293b',
+                  background: 'var(--df-bg, #f8fafc)',
+                  border: '1px solid var(--df-border, #e2e8f0)',
                   borderRadius: '6px',
                   padding: '6px 8px',
                   fontSize: '0.68rem',
                   fontFamily: 'monospace',
-                  color: '#94a3b8'
+                  color: 'var(--df-text, #0f172a)'
                 }}>
                   {polygon.map((p, i) => (
                     <div
@@ -1166,11 +1167,11 @@ export default function BoundaryConfirmationModal({
                         padding: '3px 4px',
                         borderRadius: '4px',
                         cursor: 'pointer',
-                        background: selectedVertexIndex === i ? 'rgba(59, 130, 246, 0.25)' : 'transparent',
-                        color: selectedVertexIndex === i ? '#93c5fd' : '#94a3b8'
+                        background: selectedVertexIndex === i ? 'var(--df-accent-soft, rgba(159, 18, 57, 0.12))' : 'transparent',
+                        color: selectedVertexIndex === i ? 'var(--df-accent, #9f1239)' : 'var(--df-text, #0f172a)'
                       }}
                     >
-                      <span style={{ color: selectedVertexIndex === i ? '#38bdf8' : '#60a5fa' }}>P{i + 1}:</span>
+                      <span style={{ fontWeight: 700 }}>P{i + 1}:</span>
                       <span>({p[0]}, {p[1]})</span>
                     </div>
                   ))}
@@ -1186,9 +1187,9 @@ export default function BoundaryConfirmationModal({
                 style={{
                   width: '100%',
                   padding: '11px',
-                  borderRadius: '10px',
+                  borderRadius: '6px',
                   border: 'none',
-                  background: isLocked ? '#10b981' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  background: isLocked ? 'var(--df-success, #16a34a)' : 'var(--df-accent, #9f1239)',
                   color: '#ffffff',
                   fontSize: '0.84rem',
                   fontWeight: 800,
@@ -1197,23 +1198,23 @@ export default function BoundaryConfirmationModal({
                   justifyContent: 'center',
                   gap: '8px',
                   cursor: confirming || polygon.length < 3 ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 4px 15px rgba(37, 99, 235, 0.4)'
+                  boxShadow: 'var(--df-shadow-md)'
                 }}
               >
                 {confirming ? (
                   <span>Locking Geometry & Generating 2D Plots...</span>
                 ) : isLocked ? (
                   <>
-                    <CheckCircle2 style={{ width: '16px', height: '16px' }} /> Boundary Confirmed & Plots Generated
+                    <CheckCircle2 style={{ width: '16px', height: '16px' }} /> Boundary Confirmed & Plots Built
                   </>
                 ) : (
                   <>
-                    <Lock style={{ width: '16px', height: '16px' }} /> Confirm & Generate 2D Plots
+                    <Lock style={{ width: '16px', height: '16px' }} /> Confirm Boundary & Build Plot System
                   </>
                 )}
               </button>
 
-              <p style={{ textAlign: 'center', fontSize: '0.68rem', color: '#64748b', margin: '6px 0 0 0' }}>
+              <p style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--df-text-muted, #64748b)', margin: '6px 0 0 0' }}>
                 Generates UDCPR compliant plot layout inside this exact boundary.
               </p>
             </div>

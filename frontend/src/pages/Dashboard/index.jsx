@@ -5,7 +5,7 @@ import PlotDistributionChart from './components/PlotDistributionChart';
 import ActiveProjectsTable from './components/ActiveProjectsTable';
 import RecentPayments from './components/RecentPayments';
 import RecentDocuments from './components/RecentDocuments';
-import BrokerLeaderboard from './components/BrokerLeaderboard';
+import PlotInventoryOverview from './components/PlotInventoryOverview';
 import ActivityTimeline from './components/ActivityTimeline';
 
 import analyticsData from '../../data/analytics.json';
@@ -13,7 +13,6 @@ import projectsData from '../../data/projects.json';
 import customersData from '../../data/customers.json';
 import paymentsData from '../../data/payments.json';
 import documentsData from '../../data/documents.json';
-import brokersData from '../../data/brokers.json';
 import useAuth from '../../auth/useAuth';
 
 const getGreeting = () => {
@@ -46,7 +45,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="btn-group-responsive" style={{ display: 'flex', gap: '8px' }}>
-          <a href="/projects" style={actionBtnStyle('secondary')}>+ New Project</a>
+          <a href="/projects/new" style={actionBtnStyle('secondary')}>+ New Project</a>
           <a href="/payments" style={actionBtnStyle('primary')}>Record Payment</a>
         </div>
       </div>
@@ -58,7 +57,6 @@ export default function Dashboard() {
         customersData={customersData}
         paymentsData={paymentsData}
         documentsData={documentsData}
-        brokersData={brokersData}
       />
 
       {/* Row 2: Revenue Chart (8fr) + Plot Distribution (4fr) */}
@@ -76,9 +74,9 @@ export default function Dashboard() {
         <RecentDocuments documents={documentsData} />
       </div>
 
-      {/* Row 5: Broker Leaderboard (1fr) + Activity Timeline (1fr) */}
+      {/* Row 5: Plot Inventory Overview (1fr) + Activity Timeline (1fr) */}
       <div className="dashboard-two-col-grid">
-        <BrokerLeaderboard brokers={brokersData} />
+        <PlotInventoryOverview projects={projectsData} />
         <ActivityTimeline />
       </div>
 

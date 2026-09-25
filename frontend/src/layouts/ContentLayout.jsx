@@ -19,7 +19,6 @@ const GLOBAL_NAV_SECTIONS = [
       { name: 'Overview',   path: '/dashboard',  icon: LayoutDashboard },
       { name: 'Projects',   path: '/projects',   icon: Map },
       { name: 'Customers',  path: '/customers',  icon: Users },
-      { name: 'Brokers',    path: '/brokers',    icon: UserCheck },
       { name: 'Payments',   path: '/payments',   icon: CreditCard },
       { name: 'Documents',  path: '/documents',  icon: Files },
     ],
@@ -124,7 +123,6 @@ export default function ContentLayout() {
       heading: 'Records',
       items: [
         { name: 'Customers',  path: `/projects/${currentProjectId}/customers`, icon: Users },
-        { name: 'Brokers',    path: `/projects/${currentProjectId}/brokers`,   icon: Award },
         { name: 'Payments',   path: `/projects/${currentProjectId}/payments`,  icon: CreditCard },
         { name: 'Documents',  path: `/projects/${currentProjectId}/documents`, icon: FileText },
       ],

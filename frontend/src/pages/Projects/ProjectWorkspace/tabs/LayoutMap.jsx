@@ -3,7 +3,7 @@ import {
   X, ZoomIn, ZoomOut, Maximize2, Layers, Info, CheckCircle2,
   Edit2, Download, FileText, Sparkles, Check, ChevronDown,
   Activity, ShieldCheck, CheckCircle, AlertTriangle, RefreshCw, Eye,
-  User, Phone, Mail, Save, Tag
+  User, Phone, Mail, Save, Tag, MapPin, FileCheck, CreditCard, Calendar
 } from 'lucide-react';
 import projectService from '../../../../services/projectService';
 import plotService from '../../../../services/plotService';
@@ -26,7 +26,6 @@ const STATUS_STYLE = {
  * Enforces the strict 2-color plot system:
  * - AVAILABLE plots: Vibrant GREEN (rgba(34,197,94,0.22), stroke #22c55e)
  * - SOLD plots: Vibrant RED (rgba(239,68,68,0.35), stroke #ef4444)
- * Removes legacy corner amber/orange colors and synchronizes with project plot state.
  */
 export function applyTwoColorPlotStyles(svgString, plotsList = []) {
   if (!svgString || typeof svgString !== 'string') return svgString;
@@ -68,7 +67,7 @@ export function applyTwoColorPlotStyles(svgString, plotsList = []) {
       cursor: pointer;
     }
     .landos-plot-group:hover polygon {
-      filter: brightness(1.25) drop-shadow(0 0 8px rgba(56, 189, 248, 0.5));
+      filter: brightness(1.25) drop-shadow(0 0 8px rgba(159, 18, 57, 0.4));
       stroke-width: 2.2px !important;
     }
   </style>`;
@@ -149,11 +148,18 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const [loading, setLoading] = useState(true);
   const [selectedPlot, setSelectedPlot] = useState(null);
   const [isPlotDrawerOpen, setIsPlotDrawerOpen] = useState(false);
+  const [customersList, setCustomersList] = useState(() => plotService.getAllCustomers());
   const [plotEditForm, setPlotEditForm] = useState({
     status: 'Available',
+    customerId: '',
     customerName: '',
     customerPhone: '',
     customerEmail: '',
+    customerAddress: '',
+    customerCity: '',
+    agreementStatus: '',
+    paymentStatus: '',
+    bookingDate: '',
     price: '',
     notes: '',
   });
@@ -167,24 +173,34 @@ export default function LayoutMap({ project, onOpenPlot }) {
   useEffect(() => {
     if (selectedPlot) {
       const isSold = (selectedPlot.status || '').toUpperCase() === 'SOLD' || (selectedPlot.status || '').toUpperCase() === 'BOOKED';
+      const isReserved = (selectedPlot.status || '').toUpperCase() === 'RESERVED';
+      
+      const defaultCust = (isSold || isReserved) && customersList.length > 0 ? customersList[0] : null;
+
       setPlotEditForm({
-        status: isSold ? 'Sold' : 'Available',
-        customerName: selectedPlot.customerName || (selectedPlot.customerId ? plotService.getCustomerName(selectedPlot.customerId) : '') || '',
-        customerPhone: selectedPlot.customerPhone || '',
-        customerEmail: selectedPlot.customerEmail || '',
+        status: isSold ? 'Sold' : (isReserved ? 'Reserved' : 'Available'),
+        customerId: selectedPlot.customerId || defaultCust?.id || '',
+        customerName: selectedPlot.customerName || defaultCust?.name || '',
+        customerPhone: selectedPlot.customerPhone || defaultCust?.phone || '',
+        customerEmail: selectedPlot.customerEmail || defaultCust?.email || '',
+        customerAddress: selectedPlot.customerAddress || defaultCust?.address || '12, MG Road, Pune',
+        customerCity: selectedPlot.customerCity || defaultCust?.city || 'Pune',
+        agreementStatus: selectedPlot.agreementStatus || (isSold ? 'Registered Sale Deed' : 'Token Recd & Verified'),
+        paymentStatus: selectedPlot.paymentStatus || (isSold ? '100% Completed' : 'Token Advance Paid'),
+        bookingDate: selectedPlot.bookingDate || '2024-03-15',
         price: selectedPlot.price || '',
         notes: selectedPlot.notes || '',
       });
       setSaveFeedback('');
     }
-  }, [selectedPlot]);
+  }, [selectedPlot, customersList]);
 
-  // Maharashtra UDCPR Layout Alternatives Modal & Generator State (13A-13O)
+  // Maharashtra UDCPR Layout Alternatives Modal & Generator State
   const [isAlternativesModalOpen, setIsAlternativesModalOpen] = useState(false);
   const [failureReasons, setFailureReasons] = useState([]);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
 
-  // Boundary Lock & Multi-View State (Section 26–39)
+  // Boundary Lock & Multi-View State
   const [isBoundaryModalOpen, setIsBoundaryModalOpen] = useState(false);
   const [activeViewMode, setActiveViewMode] = useState('VIEW_2_VECTOR'); // 'VIEW_1_INPUT' | 'VIEW_2_VECTOR' | 'VIEW_3_HYBRID'
   const [boundaryGeometry, setBoundaryGeometry] = useState(null);
@@ -259,8 +275,9 @@ export default function LayoutMap({ project, onOpenPlot }) {
       const plotList = await plotService.getPlotsByProject(project.id);
       setPlots(plotList || []);
       setSvgContent(prev => applyTwoColorPlotStyles(prev, plotList || []));
+      setCustomersList(plotService.getAllCustomers());
 
-      // Load confirmed or detected boundary polygon (Section 26-34)
+      // Load confirmed or detected boundary polygon
       try {
         const bRes = await projectService.detectBoundary(project.id);
         const bPoly = bRes?.polygon || bRes?.detectedBoundary || bRes?.polygonVertices;
@@ -413,10 +430,52 @@ export default function LayoutMap({ project, onOpenPlot }) {
       customerName: dbPlot?.customerName || (dbPlot?.customerId ? plotService.getCustomerName(dbPlot.customerId) : '') || '',
       customerPhone: dbPlot?.customerPhone || '',
       customerEmail: dbPlot?.customerEmail || '',
+      customerAddress: dbPlot?.customerAddress || 'Pune, Maharashtra',
+      customerCity: dbPlot?.customerCity || 'Pune',
+      agreementStatus: dbPlot?.agreementStatus || (currentStatus === 'Sold' ? 'Registered Sale Deed' : 'Token Recd & Verified'),
+      paymentStatus: dbPlot?.paymentStatus || (currentStatus === 'Sold' ? '100% Completed' : 'Token Advance Paid'),
+      bookingDate: dbPlot?.bookingDate || '2024-03-15',
       notes: dbPlot?.notes || '',
     };
 
     setSelectedPlot(mergedPlot);
+  };
+
+  const handleSelectCustomerForPlot = (cid) => {
+    setPlotEditForm(f => {
+      const c = customersList.find(item => item.id === cid);
+      if (!c) return { ...f, customerId: cid };
+      return {
+        ...f,
+        customerId: cid,
+        customerName: c.name || '',
+        customerPhone: c.phone || '',
+        customerEmail: c.email || '',
+        customerAddress: c.address || '',
+        customerCity: c.city || 'Pune',
+        agreementStatus: c.agreementStatus || f.agreementStatus,
+        paymentStatus: c.paymentStatus || f.paymentStatus,
+        bookingDate: c.bookingDate || f.bookingDate,
+      };
+    });
+  };
+
+  const handleQuickStatusChange = (newStatus) => {
+    setPlotEditForm(f => {
+      const updated = { ...f, status: newStatus };
+      if ((newStatus === 'Sold' || newStatus === 'Reserved') && !f.customerName && customersList.length > 0) {
+        const c = customersList[0];
+        updated.customerId = c.id;
+        updated.customerName = c.name;
+        updated.customerPhone = c.phone;
+        updated.customerEmail = c.email || '';
+        updated.customerAddress = c.address || 'Pune';
+        updated.customerCity = c.city || 'Pune';
+        updated.agreementStatus = newStatus === 'Sold' ? 'Registered Sale Deed' : 'Token Recd & Verified';
+        updated.paymentStatus = newStatus === 'Sold' ? '100% Completed' : 'Token Advance Paid';
+      }
+      return updated;
+    });
   };
 
   // Save Plot Updates directly from map editor or drawer
@@ -429,9 +488,15 @@ export default function LayoutMap({ project, onOpenPlot }) {
       const payload = updatesToSave || {
         status: plotEditForm.status,
         price: Number(plotEditForm.price) || selectedPlot.price,
+        customerId: plotEditForm.customerId,
         customerName: plotEditForm.customerName,
         customerPhone: plotEditForm.customerPhone,
         customerEmail: plotEditForm.customerEmail,
+        customerAddress: plotEditForm.customerAddress,
+        customerCity: plotEditForm.customerCity,
+        agreementStatus: plotEditForm.agreementStatus,
+        paymentStatus: plotEditForm.paymentStatus,
+        bookingDate: plotEditForm.bookingDate,
         notes: plotEditForm.notes,
       };
 
@@ -451,7 +516,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
         return [...prev, { id: resolvedId, plotNo: selectedPlot?.plotNumber, plotNumber: selectedPlot?.plotNumber, ...payload, status: newStatus }];
       });
 
-      // 2. Immediately update SVG DOM element for instant visual feedback
+      // 2. Immediately update SVG DOM element
       if (containerRef.current) {
         const plotNo = selectedPlot?.plotNumber;
         const selector = `[data-plot-number="${plotNo}"], #plot-poly-${plotNo}, [data-plot-id="${resolvedId}"]`;
@@ -580,7 +645,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
         borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px'
       }}>
         <div style={{
-          width: '32px', height: '32px', border: '3px solid rgba(122,30,58,0.15)', borderTopColor: 'var(--df-accent)',
+          width: '32px', height: '32px', border: '3px solid rgba(159,18,57,0.15)', borderTopColor: 'var(--df-accent)',
           borderRadius: '50%', animation: 'landos-spin 0.8s linear infinite'
         }} />
         <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--df-text)' }}>
@@ -594,35 +659,37 @@ export default function LayoutMap({ project, onOpenPlot }) {
   }
 
   const activeVarObj = variants.find(v => v.id === selectedVariantId);
+  const availablePlotsCount = plots.filter(p => (p.status || '').toUpperCase() !== 'SOLD' && (p.status || '').toUpperCase() !== 'BOOKED').length;
+  const soldPlotsCount = plots.filter(p => (p.status || '').toUpperCase() === 'SOLD' || (p.status || '').toUpperCase() === 'BOOKED').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* AI Pipeline Processing Visualizer Banner (When Active) */}
       {isJobRunning && activeJob && (
         <div style={{
-          padding: '16px 18px', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-          border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#ffffff',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+          padding: '14px 18px', background: 'var(--df-card-bg)',
+          border: '1px solid var(--df-accent)', borderRadius: '8px', color: 'var(--df-text)',
+          boxShadow: 'var(--df-shadow-md)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
-                width: '24px', height: '24px', border: '2px solid rgba(59,130,246,0.3)',
-                borderTopColor: '#60a5fa', borderRadius: '50%', animation: 'landos-spin 0.8s linear infinite'
+                width: '22px', height: '22px', border: '2px solid rgba(159,18,57,0.2)',
+                borderTopColor: 'var(--df-accent)', borderRadius: '50%', animation: 'landos-spin 0.8s linear infinite'
               }} />
               <div>
-                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc' }}>
+                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--df-text)' }}>
                   AI Perception & Layout Reconstruction Engine Running…
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--df-text-muted)' }}>
                   Stage: {activeJob.stage} • Progress: {activeJob.progressPercentage}%
                 </div>
               </div>
             </div>
             <span style={{
               padding: '3px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 800,
-              background: 'rgba(59,130,246,0.2)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)'
+              background: 'var(--df-accent-soft)', color: 'var(--df-accent)', border: '1px solid rgba(159,18,57,0.25)'
             }}>
               {activeJob.status}
             </span>
@@ -639,9 +706,9 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   style={{
                     display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px',
                     borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, whiteSpace: 'nowrap',
-                    background: isPast ? 'rgba(16,185,129,0.2)' : (isCurrent ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.05)'),
-                    color: isPast ? '#34d399' : (isCurrent ? '#60a5fa' : '#64748b'),
-                    border: isCurrent ? '1px solid #60a5fa' : '1px solid rgba(255,255,255,0.08)'
+                    background: isPast ? 'var(--df-success-soft)' : (isCurrent ? 'var(--df-accent-soft)' : 'var(--df-bg)'),
+                    color: isPast ? 'var(--df-success)' : (isCurrent ? 'var(--df-accent)' : 'var(--df-text-muted)'),
+                    border: isCurrent ? '1px solid var(--df-accent)' : '1px solid var(--df-border)'
                   }}
                   title={s.desc}
                 >
@@ -654,23 +721,23 @@ export default function LayoutMap({ project, onOpenPlot }) {
         </div>
       )}
 
-      {/* Maharashtra UDCPR Planning Norms & Generator Engine (13C, 13D) */}
+      {/* Maharashtra UDCPR Planning Norms & Generator Engine */}
       <PlanningNormsSelector
         project={project}
         onGenerate={handleGenerateMaharashtraLayouts}
         isGenerating={isAutoGenerating}
       />
 
-      {/* Multi-Alternative Design Variants Header Switcher (13J) */}
+      {/* Multi-Alternative Design Variants Header Switcher */}
       {variants.length > 0 && (
         <div style={{
-          padding: '10px 14px', background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
+          padding: '8px 14px', background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
           borderRadius: '8px'
         }}>
           <div className="responsive-stack" style={{ gap: '10px', alignItems: 'center' }}>
             <div className="horizontal-scroll-tabs" style={{ flex: 1, paddingBottom: '2px' }}>
-              <span className="hide-on-mobile" style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--df-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', marginRight: '4px' }}>
-                Generated Options (13J):
+              <span className="hide-on-mobile" style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--df-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', marginRight: '4px' }}>
+                Options:
               </span>
               {variants.map((v) => {
                 const isCurrent = v.id === selectedVariantId;
@@ -680,12 +747,12 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     key={v.id}
                     onClick={() => handleVariantSelect(v.id)}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
-                      borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px',
+                      borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
                       background: isCurrent ? 'var(--df-accent)' : 'var(--df-bg)',
                       color: isCurrent ? '#ffffff' : 'var(--df-text)',
                       border: isCurrent ? '1px solid var(--df-accent)' : '1px solid var(--df-border)',
-                      boxShadow: isCurrent ? '0 2px 8px rgba(37,99,235,0.25)' : 'none',
+                      boxShadow: isCurrent ? '0 2px 8px rgba(159,18,57,0.3)' : 'none',
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
                       transition: 'all 0.15s ease'
@@ -693,15 +760,15 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   >
                     <span>{v.optionBadge || v.strategyName}</span>
                     <span style={{
-                      padding: '1px 5px', borderRadius: '4px', fontSize: '0.65rem',
-                      background: isCurrent ? 'rgba(255,255,255,0.25)' : '#ecfdf5',
-                      color: isCurrent ? '#ffffff' : '#059669', fontWeight: 800
+                      padding: '1px 5px', borderRadius: '4px', fontSize: '0.64rem',
+                      background: isCurrent ? 'rgba(255,255,255,0.25)' : 'var(--df-success-soft)',
+                      color: isCurrent ? '#ffffff' : 'var(--df-success)', fontWeight: 800
                     }}>
                       {v.compositeScore ? `${v.compositeScore.toFixed(0)}/100` : `${v.utilizationPercent}%`}
                     </span>
                     {isMaster && (
                       <span style={{ fontSize: '0.65rem', color: isCurrent ? '#fef08a' : '#eab308' }} title="Active Master Layout">
-                        ★ Active
+                        ★ Master
                       </span>
                     )}
                   </button>
@@ -713,22 +780,22 @@ export default function LayoutMap({ project, onOpenPlot }) {
               <button
                 onClick={() => setIsAlternativesModalOpen(true)}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
-                  borderRadius: '6px', border: '1px solid #3b82f6', background: 'rgba(59,130,246,0.1)',
-                  color: '#3b82f6', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px',
+                  borderRadius: '6px', border: '1px solid var(--df-border)', background: 'var(--df-bg)',
+                  color: 'var(--df-text)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
                   whiteSpace: 'nowrap', flexShrink: 0
                 }}
               >
-                <Sparkles style={{ width: '13px', height: '13px' }} /> View Alternatives & Compare (13J/13N)
+                <Sparkles style={{ width: '13px', height: '13px', color: 'var(--df-accent)' }} /> Compare Alternatives
               </button>
 
               {activeVarObj && !activeVarObj.isSelected && (
                 <button
                   onClick={() => handleSetAsMaster(activeVarObj.id)}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
-                    borderRadius: '6px', border: '1px solid #059669', background: '#ecfdf5',
-                    color: '#059669', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px',
+                    borderRadius: '6px', border: '1px solid rgba(22,163,74,0.3)', background: 'var(--df-success-soft)',
+                    color: 'var(--df-success)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
                     whiteSpace: 'nowrap', flexShrink: 0
                   }}
                 >
@@ -740,86 +807,104 @@ export default function LayoutMap({ project, onOpenPlot }) {
         </div>
       )}
 
-      {/* Toolbar */}
+      {/* Main Toolbar */}
       <div className="page-header-container responsive-stack" style={{
-        padding: '10px 14px', background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
-        borderRadius: '6px', gap: '10px'
+        padding: '8px 14px', background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
+        borderRadius: '8px', gap: '10px'
       }}>
+        {/* Left Side: Title, View Switcher & Metrics */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <Layers style={{ width: '16px', height: '16px', color: 'var(--df-accent)' }} />
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--df-text)' }}>
-            Vector Civil Engineering Canvas
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Layers style={{ width: '16px', height: '16px', color: 'var(--df-accent)' }} />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--df-text)' }}>
+              Canvas
+            </span>
+          </div>
 
-          {/* Multi-View Switcher (Section 39) */}
-          <div style={{ display: 'inline-flex', background: '#090e17', borderRadius: '6px', padding: '2px', border: '1px solid #1e293b' }}>
+          {/* Multi-View Switcher */}
+          <div style={{ display: 'inline-flex', background: 'var(--df-bg)', borderRadius: '6px', padding: '2px', border: '1px solid var(--df-border)' }}>
             <button
               onClick={() => setActiveViewMode('VIEW_1_INPUT')}
               style={{
-                padding: '3px 8px', borderRadius: '4px', fontSize: '0.69rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-                background: activeViewMode === 'VIEW_1_INPUT' ? '#2563eb' : 'transparent',
-                color: activeViewMode === 'VIEW_1_INPUT' ? '#ffffff' : '#94a3b8'
+                padding: '3px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_1_INPUT' ? 'var(--df-accent)' : 'transparent',
+                color: activeViewMode === 'VIEW_1_INPUT' ? '#ffffff' : 'var(--df-text-muted)'
               }}
-              title="View 1: Input Document + Boundary Overlay (Section 39)"
+              title="View 1: Input Document + Boundary Overlay"
             >
-              View 1: Boundary
+              Boundary
             </button>
             <button
               onClick={() => setActiveViewMode('VIEW_2_VECTOR')}
               style={{
-                padding: '3px 8px', borderRadius: '4px', fontSize: '0.69rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-                background: activeViewMode === 'VIEW_2_VECTOR' ? '#2563eb' : 'transparent',
-                color: activeViewMode === 'VIEW_2_VECTOR' ? '#ffffff' : '#94a3b8'
+                padding: '3px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_2_VECTOR' ? 'var(--df-accent)' : 'transparent',
+                color: activeViewMode === 'VIEW_2_VECTOR' ? '#ffffff' : 'var(--df-text-muted)'
               }}
-              title="View 2: Clean 2D Vector Plan (Master Boundary Clipped)"
+              title="View 2: Clean 2D Vector CAD Plan"
             >
-              View 2: 2D Vector
+              2D CAD
             </button>
             <button
               onClick={() => setActiveViewMode('VIEW_3_HYBRID')}
               style={{
-                padding: '3px 8px', borderRadius: '4px', fontSize: '0.69rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-                background: activeViewMode === 'VIEW_3_HYBRID' ? '#2563eb' : 'transparent',
-                color: activeViewMode === 'VIEW_3_HYBRID' ? '#ffffff' : '#94a3b8'
+                padding: '3px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_3_HYBRID' ? 'var(--df-accent)' : 'transparent',
+                color: activeViewMode === 'VIEW_3_HYBRID' ? '#ffffff' : 'var(--df-text-muted)'
               }}
-              title="View 3: Hybrid Overlay on Input Document"
+              title="View 3: Hybrid Overlay on Blueprint"
             >
-              View 3: Hybrid
+              Hybrid
             </button>
           </div>
 
-          {layoutModel?.statistics && (
+          {/* Quick Metrics Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{
               fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px',
-              background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', fontWeight: 700
+              background: 'var(--df-success-soft)', color: 'var(--df-success)', border: '1px solid rgba(22,163,74,0.25)', fontWeight: 700
             }}>
-              {layoutModel.statistics.totalPlots} Plots • {layoutModel.statistics.utilizationPercent}% Land Utilization
+              🟢 {availablePlotsCount} Available
             </span>
-          )}
+            <span style={{
+              fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px',
+              background: 'var(--df-danger-soft)', color: 'var(--df-danger)', border: '1px solid rgba(220,38,38,0.25)', fontWeight: 700
+            }}>
+              🔴 {soldPlotsCount} Sold
+            </span>
+            {layoutModel?.statistics?.totalPlots && (
+              <span className="hide-on-mobile" style={{
+                fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px',
+                background: 'var(--df-bg)', color: 'var(--df-text-muted)', border: '1px solid var(--df-border)', fontWeight: 700
+              }}>
+                {layoutModel.statistics.totalPlots} Total ({layoutModel.statistics.utilizationPercent}% Utilized)
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Viewport & Export Buttons */}
+        {/* Right Side: Neutral & Red Theme Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {/* Research Debug Inspector Button */}
+          {/* AI Inspector Button (Neutral) */}
           <button
             onClick={() => setIsDebugModalOpen(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px',
-              borderRadius: '4px', border: '1px solid var(--df-border)', background: 'var(--df-bg)',
+              borderRadius: '5px', border: '1px solid var(--df-border)', background: 'var(--df-bg)',
               cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text)'
             }}
             title="Inspect 12-Stage AI Intermediate Representations"
           >
-            <Eye style={{ width: '13px', height: '13px', color: '#3b82f6' }} /> AI Pipeline Inspect
+            <Eye style={{ width: '13px', height: '13px', color: 'var(--df-accent)' }} /> Pipeline
           </button>
 
-          {/* Export Dropdown */}
+          {/* Export Dropdown (Neutral) */}
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setExportMenuOpen(!exportMenuOpen)}
               style={{
                 display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px',
-                borderRadius: '4px', border: '1px solid var(--df-border)', background: 'var(--df-bg)',
+                borderRadius: '5px', border: '1px solid var(--df-border)', background: 'var(--df-bg)',
                 cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-text)'
               }}
             >
@@ -830,7 +915,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
               <div style={{
                 position: 'absolute', right: 0, top: '100%', marginTop: '4px',
                 width: '180px', background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
-                borderRadius: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 110, padding: '4px'
+                borderRadius: '6px', boxShadow: 'var(--df-shadow-lg)', zIndex: 110, padding: '4px'
               }}>
                 <button
                   onClick={() => handleExport('dxf')}
@@ -866,49 +951,61 @@ export default function LayoutMap({ project, onOpenPlot }) {
             )}
           </div>
 
+          {/* Boundary Lock (Theme Soft Accent) */}
           <button
             onClick={() => setIsBoundaryModalOpen(true)}
-            title="Inspect, edit, and lock authentic land boundary geometry (Section 26–34)"
+            title="Inspect and lock authentic land boundary geometry"
             style={{
-              display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px',
-              borderRadius: '4px', border: '1px solid #3b82f6', background: 'rgba(59, 130, 246, 0.15)',
-              cursor: 'pointer', fontSize: '0.72rem', fontWeight: 800, color: '#60a5fa'
+              display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px',
+              borderRadius: '5px', border: '1px solid rgba(159,18,57,0.25)', background: 'var(--df-accent-soft)',
+              cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: 'var(--df-accent)'
             }}
           >
             <ShieldCheck style={{ width: '13px', height: '13px' }} /> Boundary Lock
           </button>
+
+          {/* CAD Editor (Primary Theme Red Accent) */}
           <button
             onClick={() => setIsEditorOpen(true)}
             title="Open CAD Geometry Editor"
-            style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '4px', border: '1px solid #3b82f6', background: '#2563eb', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: '#ffffff', boxShadow: '0 2px 4px rgba(37,99,235,0.3)' }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px',
+              borderRadius: '5px', border: 'none', background: 'var(--df-accent)',
+              cursor: 'pointer', fontSize: '0.72rem', fontWeight: 800, color: '#ffffff',
+              boxShadow: '0 2px 6px rgba(159,18,57,0.35)'
+            }}
           >
             <Edit2 style={{ width: '13px', height: '13px' }} /> CAD Editor
           </button>
-          <button onClick={handleZoomIn} title="Zoom In" style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--df-border)', background: 'var(--df-bg)', cursor: 'pointer', color: 'var(--df-text)' }}>
-            <ZoomIn style={{ width: '14px', height: '14px' }} />
-          </button>
-          <button onClick={handleZoomOut} title="Zoom Out" style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--df-border)', background: 'var(--df-bg)', cursor: 'pointer', color: 'var(--df-text)' }}>
-            <ZoomOut style={{ width: '14px', height: '14px' }} />
-          </button>
-          <button onClick={handleFitToScreen} title="Fit to Screen" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--df-border)', background: 'var(--df-bg)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, color: 'var(--df-text)' }}>
-            <Maximize2 style={{ width: '12px', height: '12px' }} /> Fit
-          </button>
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Full Screen CAD Mode'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px',
-              borderRadius: '4px', border: '1px solid #38bdf8',
-              background: isFullscreen ? '#0284c7' : 'rgba(56, 189, 248, 0.15)',
-              cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, color: isFullscreen ? '#fff' : '#38bdf8'
-            }}
-          >
-            {isFullscreen ? 'Exit Fullscreen' : '⛶ Fullscreen'}
-          </button>
+
+          {/* Zoom & Fit Control Group */}
+          <div style={{ display: 'inline-flex', background: 'var(--df-bg)', borderRadius: '5px', border: '1px solid var(--df-border)' }}>
+            <button onClick={handleZoomIn} title="Zoom In" style={{ padding: '5px 8px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--df-text)' }}>
+              <ZoomIn style={{ width: '13px', height: '13px' }} />
+            </button>
+            <button onClick={handleZoomOut} title="Zoom Out" style={{ padding: '5px 8px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--df-text)' }}>
+              <ZoomOut style={{ width: '13px', height: '13px' }} />
+            </button>
+            <button onClick={handleFitToScreen} title="Fit to Screen" style={{ padding: '5px 8px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, color: 'var(--df-text)' }}>
+              Fit
+            </button>
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Full Screen Mode'}
+              style={{
+                padding: '5px 8px', border: 'none', borderRadius: '0 5px 5px 0',
+                background: isFullscreen ? 'var(--df-accent)' : 'transparent',
+                cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700,
+                color: isFullscreen ? '#ffffff' : 'var(--df-text)'
+              }}
+            >
+              ⛶
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Interactive Layout SVG Render Canvas (Desktop-Optimized Full Height) */}
+      {/* Interactive Layout SVG Render Canvas */}
       <div
         ref={containerRef}
         className="layout-canvas-responsive"
@@ -927,29 +1024,29 @@ export default function LayoutMap({ project, onOpenPlot }) {
           inset: isFullscreen ? 0 : 'auto',
           zIndex: isFullscreen ? 99999 : 1,
           width: isFullscreen ? '100vw' : '100%',
-          height: isFullscreen ? '100vh' : 'calc(100vh - 195px)',
-          minHeight: isFullscreen ? '100vh' : '620px',
+          height: isFullscreen ? '100vh' : 'calc(100vh - 210px)',
+          minHeight: isFullscreen ? '100vh' : '600px',
           background: '#070c16',
           border: isFullscreen ? 'none' : '1px solid #1e293b',
           borderRadius: isFullscreen ? 0 : '8px',
           overflow: 'hidden',
           cursor: isDragging ? 'grabbing' : 'grab',
           touchAction: 'none',
-          boxShadow: isFullscreen ? 'none' : '0 10px 35px rgba(0,0,0,0.4)'
+          boxShadow: isFullscreen ? 'none' : 'var(--df-shadow-md)'
         }}
       >
         {/* Floating In-Canvas View Mode Switcher (Top-Left) */}
         <div style={{
           position: 'absolute', top: '12px', left: '12px', zIndex: 100,
           background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(10px)',
-          border: '1px solid #1e293b', borderRadius: '8px', padding: '3px',
+          border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '3px',
           display: 'flex', alignItems: 'center', gap: '2px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
         }}>
           <button
             onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_1_INPUT'); }}
             style={{
               padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-              background: activeViewMode === 'VIEW_1_INPUT' ? '#2563eb' : 'transparent',
+              background: activeViewMode === 'VIEW_1_INPUT' ? 'var(--df-accent, #9f1239)' : 'transparent',
               color: activeViewMode === 'VIEW_1_INPUT' ? '#ffffff' : '#94a3b8',
               transition: 'all 0.15s ease'
             }}
@@ -960,7 +1057,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
             onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_2_VECTOR'); }}
             style={{
               padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-              background: activeViewMode === 'VIEW_2_VECTOR' ? '#2563eb' : 'transparent',
+              background: activeViewMode === 'VIEW_2_VECTOR' ? 'var(--df-accent, #9f1239)' : 'transparent',
               color: activeViewMode === 'VIEW_2_VECTOR' ? '#ffffff' : '#94a3b8',
               transition: 'all 0.15s ease'
             }}
@@ -971,7 +1068,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
             onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_3_HYBRID'); }}
             style={{
               padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-              background: activeViewMode === 'VIEW_3_HYBRID' ? '#2563eb' : 'transparent',
+              background: activeViewMode === 'VIEW_3_HYBRID' ? 'var(--df-accent, #9f1239)' : 'transparent',
               color: activeViewMode === 'VIEW_3_HYBRID' ? '#ffffff' : '#94a3b8',
               transition: 'all 0.15s ease'
             }}
@@ -1021,12 +1118,12 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   >
                     <polygon
                       points={boundaryGeometry.polygon.map(p => `${p[0]},${p[1]}`).join(' ')}
-                      fill="rgba(37, 99, 235, 0.18)"
-                      stroke="#2563eb"
+                      fill="rgba(159, 18, 57, 0.18)"
+                      stroke="#9f1239"
                       strokeWidth="3"
                     />
                     {boundaryGeometry.polygon.map((p, i) => (
-                      <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#38bdf8" stroke="#ffffff" strokeWidth="1.5" />
+                      <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#f43f5e" stroke="#ffffff" strokeWidth="1.5" />
                     ))}
                   </svg>
                 );
@@ -1081,7 +1178,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
               No Generated Layout Found
             </div>
             <div style={{ fontSize: '0.78rem', marginTop: '6px', maxWidth: '480px', lineHeight: 1.5, color: '#94a3b8' }}>
-              Upload a blueprint or initiate the AI land understanding pipeline to extract true boundary polygons and generate 4 valid layouts.
+              Upload a blueprint or initiate the AI land understanding pipeline to extract true boundary polygons and generate valid layouts.
             </div>
             <button
               onClick={() => setIsGenerateModalOpen(true)}
@@ -1089,7 +1186,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px',
                 padding: '8px 18px', borderRadius: '6px', background: 'var(--df-accent)',
                 color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+                boxShadow: '0 4px 12px rgba(159,18,57,0.3)'
               }}
             >
               <Sparkles style={{ width: '14px', height: '14px' }} /> Run AI Land Pipeline & Generate Layouts
@@ -1101,7 +1198,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
         <div style={{
           position: 'absolute', bottom: '12px', left: '12px', zIndex: 100,
           background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
-          border: '1px solid #1e293b', borderRadius: '8px', padding: '6px 10px',
+          border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 10px',
           display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
         }}>
           <button
@@ -1111,7 +1208,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
           >
             <ZoomIn style={{ width: '14px', height: '14px' }} />
           </button>
-          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#38bdf8', minWidth: '42px', textAlign: 'center' }}>
+          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#f43f5e', minWidth: '42px', textAlign: 'center' }}>
             {Math.round(zoomScale * 100)}%
           </span>
           <button
@@ -1124,40 +1221,29 @@ export default function LayoutMap({ project, onOpenPlot }) {
           <div style={{ width: '1px', height: '18px', background: '#334155' }} />
           <button
             onClick={handleFitToScreen}
-            title="Auto-Fit to Screen (Double-click canvas)"
+            title="Auto-Fit to Screen"
             style={{ padding: '5px 10px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer' }}
           >
-            ⛶ Fit 100%
+            ⛶ 100%
           </button>
-          <span className="hide-on-mobile" style={{ fontSize: '0.66rem', color: '#64748b', marginLeft: '4px' }}>
-            • Wheel to Zoom • Drag to Pan
-          </span>
         </div>
 
         {/* Floating Orientation & Metrics HUD (Bottom-Right) */}
         <div className="hide-on-mobile" style={{
           position: 'absolute', bottom: '12px', right: '12px', zIndex: 90,
           background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(10px)',
-          border: '1px solid #1e293b', borderRadius: '8px', padding: '6px 12px',
+          border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 12px',
           display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           pointerEvents: 'none'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#38bdf8', fontSize: '0.72rem', fontWeight: 800 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f43f5e', fontSize: '0.72rem', fontWeight: 800 }}>
             <span>🧭 N ↑</span>
           </div>
           <div style={{ width: '1px', height: '14px', background: '#334155' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.68rem', fontWeight: 700 }}>
-            <span style={{ color: '#22c55e' }}>🟢 Available: {plots.filter(p => (p.status || '').toUpperCase() !== 'SOLD' && (p.status || '').toUpperCase() !== 'BOOKED').length}</span>
-            <span style={{ color: '#ef4444' }}>🔴 Sold: {plots.filter(p => (p.status || '').toUpperCase() === 'SOLD' || (p.status || '').toUpperCase() === 'BOOKED').length}</span>
+            <span style={{ color: '#22c55e' }}>🟢 Available: {availablePlotsCount}</span>
+            <span style={{ color: '#ef4444' }}>🔴 Sold: {soldPlotsCount}</span>
           </div>
-          {layoutModel?.statistics?.totalPlots && (
-            <>
-              <div style={{ width: '1px', height: '14px', background: '#334155' }} />
-              <div style={{ color: '#38bdf8', fontSize: '0.68rem', fontWeight: 700 }}>
-                {layoutModel.statistics.totalPlots} Total
-              </div>
-            </>
-          )}
         </div>
 
         {/* Selected Plot Floating Interactive Editor Drawer */}
@@ -1165,35 +1251,35 @@ export default function LayoutMap({ project, onOpenPlot }) {
           <div
             className="floating-plot-drawer"
             style={{
-              position: 'absolute', top: '12px', right: '12px', width: 'min(330px, calc(100% - 24px))',
-              background: 'rgba(15, 23, 42, 0.96)', backdropFilter: 'blur(16px)', border: '1px solid #334155',
-              borderRadius: '12px', boxShadow: '0 12px 40px rgba(0,0,0,0.7)', zIndex: 100, padding: '14px',
-              color: '#f8fafc', maxHeight: 'calc(100% - 24px)', overflowY: 'auto'
+              position: 'absolute', top: '12px', right: '12px', width: 'min(360px, calc(100% - 24px))',
+              background: 'var(--df-card-bg, #ffffff)', border: '1px solid var(--df-card-border, #e2e8f0)',
+              borderRadius: '8px', boxShadow: 'var(--df-shadow-xl)', zIndex: 100, padding: '14px',
+              color: 'var(--df-text, #0f172a)', maxHeight: 'calc(100% - 24px)', overflowY: 'auto'
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: '10px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--df-border, #e2e8f0)', paddingBottom: '10px', marginBottom: '10px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>
-                    Plot {selectedPlot.plotNumber}
+                  <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--df-text, #0f172a)', fontFamily: 'var(--font-mono)' }}>
+                    Plot {selectedPlot.plotNumber || selectedPlot.plotNo}
                   </span>
                   <span style={{
                     padding: '2px 8px', borderRadius: '4px', fontSize: '0.66rem', fontWeight: 800,
-                    background: plotEditForm.status === 'Sold' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                    color: plotEditForm.status === 'Sold' ? '#ef4444' : '#22c55e',
-                    border: plotEditForm.status === 'Sold' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)',
+                    background: plotEditForm.status === 'Sold' ? 'var(--df-danger-soft)' : 'var(--df-success-soft)',
+                    color: plotEditForm.status === 'Sold' ? 'var(--df-danger)' : 'var(--df-success)',
+                    border: plotEditForm.status === 'Sold' ? '1px solid rgba(220, 38, 38, 0.3)' : '1px solid rgba(22, 163, 74, 0.3)',
                   }}>
                     {plotEditForm.status === 'Sold' ? '🔴 SOLD' : '🟢 AVAILABLE'}
                   </span>
                 </div>
-                <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '2px' }}>
-                  {selectedPlot.dimensions} • {selectedPlot.area} SQFT ({selectedPlot.facing})
+                <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted, #64748b)', marginTop: '2px' }}>
+                  {selectedPlot.dimensions} • {(selectedPlot.areaSqft || selectedPlot.area)?.toLocaleString()} SQFT ({selectedPlot.facing})
                 </div>
               </div>
               <button
                 onClick={() => setSelectedPlot(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--df-text-muted, #64748b)', padding: '4px' }}
                 title="Close"
               >
                 <X style={{ width: '16px', height: '16px' }} />
@@ -1201,22 +1287,21 @@ export default function LayoutMap({ project, onOpenPlot }) {
             </div>
 
             {/* Quick Status Selector: Green (Available) & Red (Sold) */}
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', marginBottom: '5px' }}>
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--df-text-muted, #64748b)', marginBottom: '5px' }}>
                 Availability Status (2-Color Mode)
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <button
                   type="button"
-                  onClick={() => setPlotEditForm(f => ({ ...f, status: 'Available' }))}
+                  onClick={() => handleQuickStatusChange('Available')}
                   style={{
-                    height: '36px', borderRadius: '6px', cursor: 'pointer',
-                    border: plotEditForm.status === 'Available' ? '2px solid #22c55e' : '1px solid #1e293b',
-                    background: plotEditForm.status === 'Available' ? '#15803d' : 'rgba(30, 41, 59, 0.6)',
-                    color: plotEditForm.status === 'Available' ? '#ffffff' : '#94a3b8',
+                    height: '34px', borderRadius: '6px', cursor: 'pointer',
+                    border: plotEditForm.status === 'Available' ? '2px solid var(--df-success)' : '1px solid var(--df-border)',
+                    background: plotEditForm.status === 'Available' ? 'var(--df-success-soft)' : 'var(--df-bg)',
+                    color: plotEditForm.status === 'Available' ? 'var(--df-success)' : 'var(--df-text-muted)',
                     fontSize: '0.74rem', fontWeight: 800,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    boxShadow: plotEditForm.status === 'Available' ? '0 0 14px rgba(34,197,94,0.35)' : 'none',
                     transition: 'all 0.15s ease'
                   }}
                 >
@@ -1224,15 +1309,14 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPlotEditForm(f => ({ ...f, status: 'Sold' }))}
+                  onClick={() => handleQuickStatusChange('Sold')}
                   style={{
-                    height: '36px', borderRadius: '6px', cursor: 'pointer',
-                    border: plotEditForm.status === 'Sold' ? '2px solid #ef4444' : '1px solid #1e293b',
-                    background: plotEditForm.status === 'Sold' ? '#b91c1c' : 'rgba(30, 41, 59, 0.6)',
-                    color: plotEditForm.status === 'Sold' ? '#ffffff' : '#94a3b8',
+                    height: '34px', borderRadius: '6px', cursor: 'pointer',
+                    border: plotEditForm.status === 'Sold' ? '2px solid var(--df-danger)' : '1px solid var(--df-border)',
+                    background: plotEditForm.status === 'Sold' ? 'var(--df-danger-soft)' : 'var(--df-bg)',
+                    color: plotEditForm.status === 'Sold' ? 'var(--df-danger)' : 'var(--df-text-muted)',
                     fontSize: '0.74rem', fontWeight: 800,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    boxShadow: plotEditForm.status === 'Sold' ? '0 0 14px rgba(239,68,68,0.35)' : 'none',
                     transition: 'all 0.15s ease'
                   }}
                 >
@@ -1241,55 +1325,106 @@ export default function LayoutMap({ project, onOpenPlot }) {
               </div>
             </div>
 
-            {/* Customer Details Form */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-              <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <User style={{ width: '12px', height: '12px', color: '#38bdf8' }} />
-                {plotEditForm.status === 'Sold' ? 'Buyer / Customer Information' : 'Prospective Customer / Lead'}
+            {/* Customer & Buyer Information */}
+            <div style={{
+              background: plotEditForm.status === 'Sold' ? 'rgba(220, 38, 38, 0.04)' : 'var(--df-bg)',
+              border: plotEditForm.status === 'Sold' ? '1px solid rgba(220, 38, 38, 0.2)' : '1px solid var(--df-border)',
+              borderRadius: '6px', padding: '10px', marginBottom: '10px'
+            }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--df-text)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                <User style={{ width: '12px', height: '12px', color: 'var(--df-accent)' }} />
+                {plotEditForm.status === 'Sold' ? 'Allottee / Buyer Details (Sold Plot)' : 'Prospective Buyer / Lead'}
               </div>
 
-              <div>
+              {/* If Sold, Show Verified Buyer Dossier Badge */}
+              {plotEditForm.status === 'Sold' && plotEditForm.customerName && (
+                <div style={{
+                  padding: '8px', background: 'var(--df-card-bg)', border: '1px solid var(--df-border)',
+                  borderRadius: '5px', marginBottom: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--df-text)' }}>
+                      {plotEditForm.customerName}
+                    </span>
+                    <span style={{ fontSize: '0.60rem', fontWeight: 800, padding: '1px 5px', borderRadius: '3px', background: 'var(--df-success-soft)', color: 'var(--df-success)' }}>
+                      {plotEditForm.paymentStatus || '100% Completed'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--df-text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Phone style={{ width: '10px', height: '10px', color: 'var(--df-accent)' }} /> {plotEditForm.customerPhone || '+91 98765 43210'}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Mail style={{ width: '10px', height: '10px', color: 'var(--df-accent)' }} /> {plotEditForm.customerEmail || 'buyer@domain.com'}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <FileCheck style={{ width: '10px', height: '10px', color: 'var(--df-accent)' }} /> {plotEditForm.agreementStatus || 'Registered Sale Deed'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Customer Selector Dropdown */}
+              <div style={{ marginBottom: '6px' }}>
+                <select
+                  style={{
+                    width: '100%', height: '30px', padding: '0 8px', fontSize: '0.72rem',
+                    background: 'var(--df-card-bg)', border: '1px solid var(--df-border)', borderRadius: '5px',
+                    color: 'var(--df-text)', outline: 'none'
+                  }}
+                  value={plotEditForm.customerId}
+                  onChange={e => handleSelectCustomerForPlot(e.target.value)}
+                >
+                  <option value="">— Choose Registered Customer —</option>
+                  {customersList.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
+                </select>
+              </div>
+
+              {/* Customer Direct Text Inputs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <input
                   type="text"
-                  placeholder="Customer Full Name (e.g. Rahul Sharma)"
+                  placeholder="Customer Full Name (e.g. Rajesh Sharma)"
                   value={plotEditForm.customerName}
                   onChange={e => setPlotEditForm(f => ({ ...f, customerName: e.target.value }))}
                   style={{
-                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.76rem',
-                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
-                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box'
+                    width: '100%', height: '30px', padding: '0 8px', fontSize: '0.74rem',
+                    background: 'var(--df-card-bg)', border: '1px solid var(--df-border)', borderRadius: '5px',
+                    color: 'var(--df-text)', outline: 'none', boxSizing: 'border-box'
                   }}
                 />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <input
+                    type="text"
+                    placeholder="Phone Number"
+                    value={plotEditForm.customerPhone}
+                    onChange={e => setPlotEditForm(f => ({ ...f, customerPhone: e.target.value }))}
+                    style={{
+                      width: '100%', height: '30px', padding: '0 8px', fontSize: '0.72rem',
+                      background: 'var(--df-card-bg)', border: '1px solid var(--df-border)', borderRadius: '5px',
+                      color: 'var(--df-text)', outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email Address"
+                    value={plotEditForm.customerEmail}
+                    onChange={e => setPlotEditForm(f => ({ ...f, customerEmail: e.target.value }))}
+                    style={{
+                      width: '100%', height: '30px', padding: '0 8px', fontSize: '0.72rem',
+                      background: 'var(--df-card-bg)', border: '1px solid var(--df-border)', borderRadius: '5px',
+                      color: 'var(--df-text)', outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
+            </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                <input
-                  type="text"
-                  placeholder="Phone Number"
-                  value={plotEditForm.customerPhone}
-                  onChange={e => setPlotEditForm(f => ({ ...f, customerPhone: e.target.value }))}
-                  style={{
-                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.74rem',
-                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
-                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box'
-                  }}
-                />
-                <input
-                  type="email"
-                  placeholder="Email Address"
-                  value={plotEditForm.customerEmail}
-                  onChange={e => setPlotEditForm(f => ({ ...f, customerEmail: e.target.value }))}
-                  style={{
-                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.74rem',
-                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
-                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
+            {/* Price & Notes */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.62rem', color: '#94a3b8', marginBottom: '3px' }}>
-                  Sale / Valuation Price (₹)
+                <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--df-text-muted)', marginBottom: '2px' }}>
+                  Sale Valuation (₹)
                 </label>
                 <input
                   type="number"
@@ -1297,22 +1432,22 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   value={plotEditForm.price}
                   onChange={e => setPlotEditForm(f => ({ ...f, price: e.target.value }))}
                   style={{
-                    width: '100%', height: '32px', padding: '0 10px', fontSize: '0.76rem',
-                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
-                    color: '#34d399', fontWeight: 700, outline: 'none', boxSizing: 'border-box'
+                    width: '100%', height: '30px', padding: '0 8px', fontSize: '0.76rem',
+                    background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '5px',
+                    color: 'var(--df-accent)', fontWeight: 800, outline: 'none', boxSizing: 'border-box'
                   }}
                 />
               </div>
 
               <div>
                 <textarea
-                  placeholder="Notes or booking remarks…"
+                  placeholder="Booking notes or remarks…"
                   value={plotEditForm.notes}
                   onChange={e => setPlotEditForm(f => ({ ...f, notes: e.target.value }))}
                   style={{
-                    width: '100%', height: '48px', padding: '6px 10px', fontSize: '0.72rem',
-                    background: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
-                    color: '#f8fafc', outline: 'none', boxSizing: 'border-box', resize: 'vertical'
+                    width: '100%', height: '40px', padding: '4px 8px', fontSize: '0.70rem',
+                    background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '5px',
+                    color: 'var(--df-text)', outline: 'none', boxSizing: 'border-box', resize: 'vertical'
                   }}
                 />
               </div>
@@ -1321,47 +1456,43 @@ export default function LayoutMap({ project, onOpenPlot }) {
             {/* Save Feedback Banner */}
             {saveFeedback && (
               <div style={{
-                padding: '6px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                background: saveFeedback.includes('SOLD') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                color: saveFeedback.includes('SOLD') ? '#ef4444' : '#22c55e',
-                border: saveFeedback.includes('SOLD') ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)',
-                marginBottom: '10px', textAlign: 'center'
+                padding: '6px 10px', borderRadius: '5px', fontSize: '0.70rem', fontWeight: 700,
+                background: saveFeedback.includes('SOLD') ? 'var(--df-danger-soft)' : 'var(--df-success-soft)',
+                color: saveFeedback.includes('SOLD') ? 'var(--df-danger)' : 'var(--df-success)',
+                border: saveFeedback.includes('SOLD') ? '1px solid rgba(220, 38, 38, 0.3)' : '1px solid rgba(22, 163, 74, 0.3)',
+                marginBottom: '8px', textAlign: 'center'
               }}>
                 ✓ {saveFeedback}
               </div>
             )}
 
-            {/* Save & Actions */}
+            {/* Save & Actions in Theme */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <button
                 type="button"
                 onClick={() => handleSavePlot()}
                 disabled={isSavingPlot}
                 style={{
-                  width: '100%', height: '36px', borderRadius: '6px',
-                  background: plotEditForm.status === 'Sold'
-                    ? 'linear-gradient(135deg, #dc2626, #991b1b)'
-                    : 'linear-gradient(135deg, #16a34a, #15803d)',
+                  width: '100%', height: '34px', borderRadius: '6px',
+                  background: plotEditForm.status === 'Sold' ? 'var(--df-danger)' : 'var(--df-success)',
                   border: 'none', color: '#ffffff',
-                  fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                  fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  boxShadow: plotEditForm.status === 'Sold'
-                    ? '0 4px 14px rgba(220, 38, 38, 0.4)'
-                    : '0 4px 14px rgba(22, 163, 74, 0.4)',
+                  boxShadow: 'var(--df-shadow-xs)',
                   opacity: isSavingPlot ? 0.7 : 1
                 }}
               >
-                <Save style={{ width: '14px', height: '14px' }} />
-                {isSavingPlot ? 'Updating Plot…' : `Save Plot as ${plotEditForm.status === 'Sold' ? 'RED (Sold)' : 'GREEN (Available)'}`}
+                <Save style={{ width: '13px', height: '13px' }} />
+                {isSavingPlot ? 'Updating…' : `Save Plot as ${plotEditForm.status === 'Sold' ? 'RED (Sold)' : 'GREEN (Available)'}`}
               </button>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '2px' }}>
                 <button
                   type="button"
                   onClick={() => setIsPlotDrawerOpen(true)}
                   style={{
-                    height: '28px', borderRadius: '5px', border: '1px solid #334155',
-                    background: '#1e293b', color: '#cbd5e1', fontSize: '0.68rem', fontWeight: 600,
+                    height: '28px', borderRadius: '5px', border: '1px solid var(--df-border)',
+                    background: 'var(--df-bg)', color: 'var(--df-text)', fontSize: '0.68rem', fontWeight: 700,
                     cursor: 'pointer'
                   }}
                 >
@@ -1373,19 +1504,19 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     if (onOpenPlot) onOpenPlot(selectedPlot.id);
                   }}
                   style={{
-                    height: '28px', borderRadius: '5px', border: '1px solid #334155',
-                    background: '#1e293b', color: '#cbd5e1', fontSize: '0.68rem', fontWeight: 600,
+                    height: '28px', borderRadius: '5px', border: '1px solid var(--df-border)',
+                    background: 'var(--df-bg)', color: 'var(--df-text)', fontSize: '0.68rem', fontWeight: 700,
                     cursor: 'pointer'
                   }}
                 >
-                  Inventory Table →
+                  Plots Table →
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Full Plot Drawer when requested from map */}
+        {/* Full Plot Drawer when requested */}
         {isPlotDrawerOpen && selectedPlot && (
           <PlotDrawer
             plot={selectedPlot}
@@ -1398,13 +1529,13 @@ export default function LayoutMap({ project, onOpenPlot }) {
       {/* Research Debug Inspector Modal */}
       {isDebugModalOpen && (
         <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(4px)'
         }}>
           <div style={{
             background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
             borderRadius: '10px', width: 'min(760px, 96vw)', maxHeight: '85vh',
-            display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+            display: 'flex', flexDirection: 'column', boxShadow: 'var(--df-shadow-xl)',
             animation: 'landos-fade-in 0.2s ease-out'
           }}>
             <div style={{
@@ -1412,7 +1543,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
               padding: '14px 18px', borderBottom: '1px solid var(--df-border)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Activity style={{ width: '18px', height: '18px', color: '#3b82f6' }} />
+                <Activity style={{ width: '18px', height: '18px', color: 'var(--df-accent)' }} />
                 <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--df-text)' }}>
                   12-Stage AI Land Pipeline & Research Inspector
                 </span>
@@ -1466,7 +1597,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                       <div>• Detected Regions: <strong>{aiRunResult.segmentation.regionsCount || 0} contours</strong></div>
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
                         {aiRunResult.segmentation.classes?.map((c, i) => (
-                          <span key={i} style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700, background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
+                          <span key={i} style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700, background: 'var(--df-accent-soft)', color: 'var(--df-accent)', border: '1px solid rgba(159,18,57,0.25)' }}>
                             {c}
                           </span>
                         ))}
@@ -1573,7 +1704,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
               <button
                 onClick={() => setIsDebugModalOpen(false)}
                 style={{
-                  padding: '6px 14px', borderRadius: '4px', background: 'var(--df-bg)',
+                  padding: '6px 14px', borderRadius: '5px', background: 'var(--df-bg)',
                   border: '1px solid var(--df-border)', color: 'var(--df-text)', fontWeight: 700,
                   fontSize: '0.75rem', cursor: 'pointer'
                 }}
@@ -1588,13 +1719,13 @@ export default function LayoutMap({ project, onOpenPlot }) {
       {/* Generate Layouts Trigger Modal */}
       {isGenerateModalOpen && (
         <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(4px)'
         }}>
           <div style={{
             background: 'var(--df-card-bg)', border: '1px solid var(--df-card-border)',
             borderRadius: '10px', width: 'min(480px, 94vw)', display: 'flex', flexDirection: 'column',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.5)', animation: 'landos-fade-in 0.2s ease-out'
+            boxShadow: 'var(--df-shadow-xl)', animation: 'landos-fade-in 0.2s ease-out'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--df-border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1617,7 +1748,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   type="number"
                   value={genForm.targetPlotSqft}
                   onChange={e => setGenForm({ ...genForm, targetPlotSqft: Number(e.target.value) })}
-                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)' }}
+                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)', boxSizing: 'border-box' }}
                 />
               </div>
 
@@ -1629,7 +1760,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   type="number"
                   value={genForm.roadWidthFt}
                   onChange={e => setGenForm({ ...genForm, roadWidthFt: Number(e.target.value) })}
-                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)' }}
+                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)', boxSizing: 'border-box' }}
                 />
               </div>
 
@@ -1641,7 +1772,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   type="number"
                   value={genForm.gardenPercentage}
                   onChange={e => setGenForm({ ...genForm, gardenPercentage: Number(e.target.value) })}
-                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)' }}
+                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)', boxSizing: 'border-box' }}
                 />
               </div>
 
@@ -1653,7 +1784,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                   type="number"
                   value={genForm.setbackFt}
                   onChange={e => setGenForm({ ...genForm, setbackFt: Number(e.target.value) })}
-                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)' }}
+                  style={{ width: '100%', height: '36px', padding: '0 10px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', borderRadius: '6px', color: 'var(--df-text)', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
@@ -1661,14 +1792,14 @@ export default function LayoutMap({ project, onOpenPlot }) {
             <div style={{ padding: '12px 18px', borderTop: '1px solid var(--df-border)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button
                 onClick={() => setIsGenerateModalOpen(false)}
-                style={{ padding: '6px 14px', borderRadius: '4px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', color: 'var(--df-text)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                style={{ padding: '6px 14px', borderRadius: '5px', background: 'var(--df-bg)', border: '1px solid var(--df-border)', color: 'var(--df-text)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleTriggerAiRun}
                 disabled={isTriggering}
-                style={{ padding: '6px 16px', borderRadius: '4px', background: 'var(--df-accent)', border: 'none', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                style={{ padding: '6px 16px', borderRadius: '5px', background: 'var(--df-accent)', border: 'none', color: '#ffffff', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(159,18,57,0.3)' }}
               >
                 {isTriggering ? 'Starting…' : 'Generate 4 Scored Alternatives'}
               </button>
@@ -1689,7 +1820,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
         }}
       />
 
-      {/* Maharashtra UDCPR Best 2-3 Alternatives & Comparison Modal (13J, 13M, 13N) */}
+      {/* Maharashtra UDCPR Best 2-3 Alternatives & Comparison Modal */}
       <LayoutAlternativesModal
         isOpen={isAlternativesModalOpen}
         onClose={() => setIsAlternativesModalOpen(false)}
@@ -1701,7 +1832,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
         validCount={variants.length}
       />
 
-      {/* Boundary Confirmation & Lock Modal (Section 26–34) */}
+      {/* Boundary Confirmation & Lock Modal */}
       <BoundaryConfirmationModal
         isOpen={isBoundaryModalOpen}
         onClose={() => setIsBoundaryModalOpen(false)}
