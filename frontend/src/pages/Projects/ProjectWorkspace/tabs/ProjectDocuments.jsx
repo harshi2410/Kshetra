@@ -1,20 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Files, Upload, Download, Eye, X, ShieldCheck, FileText, CheckCircle2, Tag } from 'lucide-react';
+import { Files, Upload, Download, Eye, X, ShieldCheck, FileText, CheckCircle2, Tag, FileCode, Map, Award, FileSpreadsheet } from 'lucide-react';
 import initialDocuments from '../../../../data/documents.json';
 import { formatDate } from '../../../../utils/formatters';
 
 const DOCUMENTS_STORAGE_KEY = 'landos_documents_vault';
-
-const CAT_ICON = { 
-  'Sale Agreement': '📄', 
-  'Allotment Letter': '📋', 
-  'Layout Plan': '🗺️', 
-  'RERA Certificate': '🏛️', 
-  'NA Order': '📜',
-  '7/12 Extract': '📑',
-  'Town Planning Sanction': '📐',
-  'NOC': '✅' 
-};
 
 export default function ProjectDocuments({ project }) {
   const [documents, setDocuments] = useState(() => {
@@ -208,7 +197,7 @@ export default function ProjectDocuments({ project }) {
                 >
                   <td style={{ padding: '12px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.2rem' }}>{CAT_ICON[doc.type] || '📎'}</span>
+                      <FileText style={{ width: '16px', height: '16px', color: 'var(--df-accent)', flexShrink: 0 }} />
                       <div>
                         <div style={{ fontWeight: 800, fontSize: '0.78rem', color: 'var(--df-text)' }}>{doc.name}</div>
                         {doc.regNumber && (

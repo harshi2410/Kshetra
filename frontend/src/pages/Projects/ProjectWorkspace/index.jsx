@@ -113,42 +113,6 @@ export default function ProjectWorkspace() {
         </div>
       </div>
 
-      {/* Horizontal Scrollable Tabs Bar for Fast Navigation */}
-      <div className="horizontal-scroll-tabs" style={{
-        padding: '4px 6px',
-        background: 'var(--df-card-bg)',
-        border: '1px solid var(--df-card-border)',
-        borderRadius: '8px',
-      }}>
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const isActive = t.id === activeTab.id;
-          return (
-            <Link
-              key={t.id}
-              to={`/projects/${projectId}${t.path}`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '5px',
-                fontSize: '0.75rem',
-                fontWeight: isActive ? 800 : 600,
-                color: isActive ? '#ffffff' : 'var(--df-text-soft)',
-                backgroundColor: isActive ? 'var(--df-accent)' : 'transparent',
-                textDecoration: 'none',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <Icon style={{ width: '13px', height: '13px' }} />
-              <span>{t.label}</span>
-            </Link>
-          );
-        })}
-      </div>
-
       {/* Active Tab Content Area */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {activeTab.id === 'overview'   && <Overview         project={project} />}

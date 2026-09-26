@@ -148,7 +148,7 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
                 color: isSold ? 'var(--df-danger)' : (isReserved ? '#d97706' : 'var(--df-success)'),
                 border: isSold ? '1px solid rgba(220, 38, 38, 0.3)' : (isReserved ? '1px solid rgba(217, 119, 6, 0.3)' : '1px solid rgba(22, 163, 74, 0.3)')
               }}>
-                {isSold ? '🔴 SOLD' : (isReserved ? '🟡 RESERVED' : '🟢 AVAILABLE')}
+                {isSold ? 'SOLD' : (isReserved ? 'RESERVED' : 'AVAILABLE')}
               </span>
               {plot.isCorner && (
                 <span style={{ fontSize: '0.62rem', padding: '2px 6px', background: 'var(--df-accent-soft)', color: 'var(--df-accent)', border: '1px solid rgba(159,18,57,0.25)', borderRadius: '4px', fontWeight: 800 }}>
@@ -202,7 +202,7 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
                   transition: 'all 0.15s ease'
                 }}
               >
-                <span>🟢</span> Available
+                Available
               </button>
               <button
                 type="button"
@@ -217,7 +217,7 @@ export default function PlotDrawer({ plot, onClose, onSave }) {
                   transition: 'all 0.15s ease'
                 }}
               >
-                <span>🔴</span> Sold
+                Sold
               </button>
             </div>
           </div>

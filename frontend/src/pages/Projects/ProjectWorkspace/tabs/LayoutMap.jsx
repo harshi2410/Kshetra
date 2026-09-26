@@ -768,7 +768,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     </span>
                     {isMaster && (
                       <span style={{ fontSize: '0.65rem', color: isCurrent ? '#fef08a' : '#eab308' }} title="Active Master Layout">
-                        ★ Master
+                        Master
                       </span>
                     )}
                   </button>
@@ -864,13 +864,13 @@ export default function LayoutMap({ project, onOpenPlot }) {
               fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px',
               background: 'var(--df-success-soft)', color: 'var(--df-success)', border: '1px solid rgba(22,163,74,0.25)', fontWeight: 700
             }}>
-              🟢 {availablePlotsCount} Available
+              {availablePlotsCount} Available
             </span>
             <span style={{
               fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px',
               background: 'var(--df-danger-soft)', color: 'var(--df-danger)', border: '1px solid rgba(220,38,38,0.25)', fontWeight: 700
             }}>
-              🔴 {soldPlotsCount} Sold
+              {soldPlotsCount} Sold
             </span>
             {layoutModel?.statistics?.totalPlots && (
               <span className="hide-on-mobile" style={{
@@ -925,7 +925,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     fontWeight: 600, color: 'var(--df-text)', display: 'flex', alignItems: 'center', gap: '6px'
                   }}
                 >
-                  📐 AutoCAD CAD (.dxf)
+                  <FileCode style={{ width: '13px', height: '13px' }} /> AutoCAD CAD (.dxf)
                 </button>
                 <button
                   onClick={() => handleExport('geojson')}
@@ -935,7 +935,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     fontWeight: 600, color: 'var(--df-text)', display: 'flex', alignItems: 'center', gap: '6px'
                   }}
                 >
-                  🗺️ GIS GeoJSON (.json)
+                  <Map style={{ width: '13px', height: '13px' }} /> GIS GeoJSON (.json)
                 </button>
                 <button
                   onClick={() => handleExport('csv')}
@@ -945,7 +945,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     fontWeight: 600, color: 'var(--df-text)', display: 'flex', alignItems: 'center', gap: '6px'
                   }}
                 >
-                  📊 Plot Schedule (.csv)
+                  <FileText style={{ width: '13px', height: '13px' }} /> Plot Schedule (.csv)
                 </button>
               </div>
             )}
@@ -996,10 +996,11 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 padding: '5px 8px', border: 'none', borderRadius: '0 5px 5px 0',
                 background: isFullscreen ? 'var(--df-accent)' : 'transparent',
                 cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700,
-                color: isFullscreen ? '#ffffff' : 'var(--df-text)'
+                color: isFullscreen ? '#ffffff' : 'var(--df-text)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}
             >
-              ⛶
+              <Maximize2 style={{ width: '13px', height: '13px' }} />
             </button>
           </div>
         </div>

@@ -163,25 +163,25 @@ export default function PlanningNormsSelector({
                 fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
                 background: 'var(--df-success-soft, rgba(22, 163, 74, 0.1))', color: 'var(--df-success, #16a34a)', border: '1px solid rgba(22, 163, 74, 0.25)', fontWeight: 700
               }}>
-                🌿 Open Space: {evaluatedNorms?.openSpacePercentage || 10}%
+                Open Space: {evaluatedNorms?.openSpacePercentage || 10}%
               </span>
               <span style={{
                 fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
                 background: 'var(--df-accent-soft, rgba(159, 18, 57, 0.08))', color: 'var(--df-accent, #9f1239)', border: '1px solid rgba(159, 18, 57, 0.2)', fontWeight: 700
               }}>
-                🏢 Amenity: {evaluatedNorms?.amenitySpacePercentage || 5}%
+                Amenity: {evaluatedNorms?.amenitySpacePercentage || 5}%
               </span>
               <span style={{
                 fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
                 background: 'var(--df-bg, #f8fafc)', color: 'var(--df-text-soft, #334155)', border: '1px solid var(--df-border, #e2e8f0)', fontWeight: 700
               }}>
-                🛣️ Road: {evaluatedNorms?.internalRoadWidthM || 9}M ({evaluatedNorms?.internalRoadWidthFt || 29.5}')
+                Road: {evaluatedNorms?.internalRoadWidthM || 9}M ({evaluatedNorms?.internalRoadWidthFt || 29.5}')
               </span>
               <span style={{
                 fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px',
                 background: 'var(--df-bg, #f8fafc)', color: 'var(--df-text, #0f172a)', border: '1px solid var(--df-border, #e2e8f0)', fontWeight: 700
               }}>
-                📐 Min Plot: {evaluatedNorms?.minPlotAreaSqm || 100} m²
+                Min Plot: {evaluatedNorms?.minPlotAreaSqm || 100} m²
               </span>
             </div>
           </div>
