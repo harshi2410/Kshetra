@@ -73,6 +73,10 @@ class ProjectDtoFormatter:
             "startDate": comm.launch_date.strftime("%Y-%m-%d") if (comm and comm.launch_date) else None,
             "expectedCompletion": comm.completion_date.strftime("%Y-%m-%d") if (comm and comm.completion_date) else "",
             "layoutUploaded": bool(layout), "layoutSource": layout_dict,
+            "landLengthFt": project.land_length_ft,
+            "landBreadthFt": project.land_breadth_ft,
+            "landPolygonJson": project.land_polygon_json,
+            "satelliteCoordsJson": project.satellite_coords_json,
             "createdAt": project.created_at.isoformat() if project.created_at else "",
             "updatedAt": project.updated_at.isoformat() if project.updated_at else ""
         }

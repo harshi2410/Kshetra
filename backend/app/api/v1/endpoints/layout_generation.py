@@ -40,6 +40,7 @@ class EntryPointInput(BaseModel):
 class ConfirmBoundaryRequest(BaseModel):
     polygonVertices: Optional[List[List[float]]] = Field(None, description="Confirmed boundary polygon vertices [[x, y], ...]")
     polygon: Optional[List[List[float]]] = Field(None, description="Alias for polygonVertices")
+    satelliteCoords: Optional[List[List[float]]] = Field(None, description="Satellite lat/lng coordinates [[lat, lng], ...]")
     boundaryConfirmed: bool = Field(True, description="Explicit confirmation flag")
 
     def get_vertices(self) -> List[List[float]]:
@@ -71,6 +72,7 @@ class GenerateLayoutsRequest(BaseModel):
     breadthFt: float = Field(..., description="Land breadth in feet", gt=0)
     entryPoints: Optional[List[EntryPointInput]] = None
     polygonVertices: Optional[List[List[float]]] = None
+    satelliteCoords: Optional[List[List[float]]] = None
 
     # Maharashtra Planning Jurisdiction & Rules (13C)
     jurisdictionId: Optional[str] = Field("IN_MH_PMC", description="Maharashtra Planning Authority")
@@ -296,11 +298,20 @@ def confirm_boundary(project_id: str, req: ConfirmBoundaryRequest, db: Session =
     project.land_polygon_json = json.dumps(clean_verts)
     project.land_length_ft = round(bw, 1)
     project.land_breadth_ft = round(bh, 1)
+    if req.satelliteCoords:
+        project.satellite_coords_json = json.dumps(req.satelliteCoords)
     db.commit()
 
     shape_meta = boundary_detection_engine_instance.classify_shape_characteristics(poly_obj)
 
     logger.info(f"Locked confirmed boundary for project {project_id}: {len(clean_verts)} vertices, {gross_sqft:.1f} sqft, shape={shape_meta.get('shapeType')}")
+
+    saved_satellite_coords = None
+    if project.satellite_coords_json:
+        try:
+            saved_satellite_coords = json.loads(project.satellite_coords_json)
+        except Exception:
+            pass
 
     return {
         "projectId": project_id,
@@ -310,6 +321,7 @@ def confirm_boundary(project_id: str, req: ConfirmBoundaryRequest, db: Session =
         "polygon": clean_verts,
         "polygonVertices": clean_verts,
         "detectedBoundary": clean_verts,
+        "satelliteCoords": saved_satellite_coords or req.satelliteCoords,
         "areaSqft": round(gross_sqft, 1),
         "areaSqm": round(gross_sqft * 0.092903, 1),
         "perimeterFt": round(float(poly_obj.length), 1),
@@ -368,6 +380,8 @@ def generate_layouts(project_id: str, req: GenerateLayoutsRequest, db: Session =
         project.entry_points_json = json.dumps([ep.model_dump() for ep in req.entryPoints])
     if poly_vertices:
         project.land_polygon_json = json.dumps(poly_vertices)
+    if req.satelliteCoords:
+        project.satellite_coords_json = json.dumps(req.satelliteCoords)
 
     db.commit()
 

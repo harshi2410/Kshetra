@@ -20,6 +20,7 @@ class Project(Base):
     land_length_ft = Column(Float, nullable=True)
     land_breadth_ft = Column(Float, nullable=True)
     land_polygon_json = Column(Text, nullable=True)
+    satellite_coords_json = Column(Text, nullable=True)
     entry_points_json = Column(Text, nullable=True)
     desired_plot_size_sqft = Column(Float, nullable=True, default=1200.0)
     min_plot_sqft = Column(Float, nullable=True, default=800.0)

@@ -183,6 +183,11 @@ class ProjectResponse(BaseModel):
     layoutUploaded: bool = False
     layoutSource: Optional[LayoutSourceResponse] = None
 
+    landLengthFt: Optional[float] = None
+    landBreadthFt: Optional[float] = None
+    landPolygonJson: Optional[str] = None
+    satelliteCoordsJson: Optional[str] = None
+
     createdAt: str
     updatedAt: str
 

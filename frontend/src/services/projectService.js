@@ -872,6 +872,7 @@ export const projectService = {
     const payload = {
       polygonVertices: data.polygonVertices || data.polygon || (Array.isArray(data) ? data : []),
       polygon: data.polygon || data.polygonVertices || (Array.isArray(data) ? data : []),
+      satelliteCoords: data.satelliteCoords || null,
       boundaryConfirmed: true
     };
     try {

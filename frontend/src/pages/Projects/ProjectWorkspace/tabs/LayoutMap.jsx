@@ -13,6 +13,8 @@ import PlanningNormsSelector from '../components/PlanningNormsSelector';
 import LayoutAlternativesModal from '../components/LayoutAlternativesModal';
 import BoundaryConfirmationModal from '../../../../components/boundary_editor/BoundaryConfirmationModal';
 import PlotDrawer from '../components/PlotDrawer';
+import SatelliteBoundaryCanvas from '../components/SatelliteBoundaryCanvas';
+import { geoPolygonToCadPolygon } from '../../../../utils/geoProjection';
 
 const STATUS_STYLE = {
   AVAILABLE: { bg: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: 'rgba(34, 197, 94, 0.3)' },
@@ -202,8 +204,28 @@ export default function LayoutMap({ project, onOpenPlot }) {
 
   // Boundary Lock & Multi-View State
   const [isBoundaryModalOpen, setIsBoundaryModalOpen] = useState(false);
-  const [activeViewMode, setActiveViewMode] = useState('VIEW_2_VECTOR'); // 'VIEW_1_INPUT' | 'VIEW_2_VECTOR' | 'VIEW_3_HYBRID'
+  const [activeViewMode, setActiveViewMode] = useState('VIEW_2_VECTOR'); // 'VIEW_1_INPUT' | 'VIEW_2_VECTOR' | 'VIEW_3_HYBRID' | 'VIEW_SATELLITE'
   const [boundaryGeometry, setBoundaryGeometry] = useState(null);
+  const [satelliteCoords, setSatelliteCoords] = useState(() => {
+    if (project?.satelliteCoordsJson) {
+      try {
+        const p = JSON.parse(project.satelliteCoordsJson);
+        if (Array.isArray(p) && p.length >= 3) return p;
+      } catch (e) {}
+    }
+    return [];
+  });
+  // Dedicated layout model strictly for the satellite boundary view (prevents showing predefined 2D CAD plots)
+  const [satelliteLayoutModel, setSatelliteLayoutModel] = useState(null);
+  const [isBoundaryLocked, setIsBoundaryLocked] = useState(() => {
+    if (project?.satelliteCoordsJson) {
+      try {
+        const p = JSON.parse(project.satelliteCoordsJson);
+        if (Array.isArray(p) && p.length >= 3) return true;
+      } catch (e) {}
+    }
+    return false;
+  });
 
   // AI Pipeline State
   const [activeJob, setActiveJob] = useState(null);
@@ -258,7 +280,18 @@ export default function LayoutMap({ project, onOpenPlot }) {
         const modelRes = await projectService.getVariantModel(project.id, activeVariant.id);
 
         if (svgRes?.svgContent) setSvgContent(svgRes.svgContent);
-        if (modelRes) setLayoutModel(modelRes);
+        if (modelRes) {
+          setLayoutModel(modelRes);
+          // Only associate this model with the satellite view if satellite coordinates exist
+          if (project?.satelliteCoordsJson) {
+            try {
+              const sc = JSON.parse(project.satelliteCoordsJson);
+              if (Array.isArray(sc) && sc.length >= 3) {
+                setSatelliteLayoutModel(modelRes);
+              }
+            } catch (e) {}
+          }
+        }
       } else {
         // Fallback to layout sources
         const sources = await projectService.getProjectLayoutSources(project.id);
@@ -283,6 +316,20 @@ export default function LayoutMap({ project, onOpenPlot }) {
         const bPoly = bRes?.polygon || bRes?.detectedBoundary || bRes?.polygonVertices;
         if (bPoly && Array.isArray(bPoly) && bPoly.length >= 3) {
           setBoundaryGeometry({ ...bRes, polygon: bPoly });
+        }
+        if (bRes?.satelliteCoords && Array.isArray(bRes.satelliteCoords) && bRes.satelliteCoords.length >= 3) {
+          setSatelliteCoords(bRes.satelliteCoords);
+          if (bRes.isLocked || bRes.status === 'LOCKED' || bRes.isConfirmed) {
+            setIsBoundaryLocked(true);
+          }
+        } else if (project?.satelliteCoordsJson) {
+          try {
+            const p = JSON.parse(project.satelliteCoordsJson);
+            if (Array.isArray(p) && p.length >= 3) {
+              setSatelliteCoords(p);
+              setIsBoundaryLocked(true);
+            }
+          } catch (e) {}
         }
       } catch (e) {
         console.warn('Could not load project boundary:', e);
@@ -330,7 +377,12 @@ export default function LayoutMap({ project, onOpenPlot }) {
       const modelRes = await projectService.getVariantModel(project.id, varId);
 
       if (svgRes?.svgContent) setSvgContent(applyTwoColorPlotStyles(svgRes.svgContent, plots));
-      if (modelRes) setLayoutModel(modelRes);
+      if (modelRes) {
+        setLayoutModel(modelRes);
+        if (satelliteCoords.length >= 3) {
+          setSatelliteLayoutModel(modelRes);
+        }
+      }
     } catch (err) {
       console.error('Error switching variant:', err);
     }
@@ -349,12 +401,15 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const handleGenerateMaharashtraLayouts = async (params) => {
     setIsAutoGenerating(true);
     setFailureReasons([]);
+    const isSatelliteGen = Boolean(params?.satelliteCoords && params.satelliteCoords.length >= 3);
     try {
       const res = await projectService.generateLayouts(project.id, params);
       if (res) {
         if (res.validOptionsCount === 0 || !res.variants || res.variants.length === 0) {
           setFailureReasons(res.failureReasons || ['No fully compliant layout could be generated under the selected planning constraints.']);
-          setIsAlternativesModalOpen(true);
+          if (!isSatelliteGen) {
+            setIsAlternativesModalOpen(true);
+          }
         } else {
           setVariants(res.variants);
           const first = res.variants[0];
@@ -362,8 +417,24 @@ export default function LayoutMap({ project, onOpenPlot }) {
           const svgRes = await projectService.getVariantSvg(project.id, first.id);
           const modelRes = await projectService.getVariantModel(project.id, first.id);
           if (svgRes?.svgContent) setSvgContent(applyTwoColorPlotStyles(svgRes.svgContent, plots));
-          if (modelRes) setLayoutModel(modelRes);
-          setIsAlternativesModalOpen(true);
+          if (modelRes) {
+            setLayoutModel(modelRes);
+            if (isSatelliteGen) {
+              setSatelliteLayoutModel(modelRes);
+            }
+          }
+
+          // Fetch updated plots list from database
+          const plotList = await plotService.getPlotsByProject(project.id);
+          setPlots(plotList || []);
+
+          if (isSatelliteGen) {
+            // Keep user on the satellite view so generated plots appear right there on satellite
+            setActiveViewMode('VIEW_SATELLITE');
+            setIsBoundaryLocked(true);
+          } else {
+            setIsAlternativesModalOpen(true);
+          }
         }
       }
     } catch (err) {
@@ -371,6 +442,44 @@ export default function LayoutMap({ project, onOpenPlot }) {
     } finally {
       setIsAutoGenerating(false);
     }
+  };
+
+  const handleSatelliteBoundaryConfirmed = async (data) => {
+    try {
+      setSatelliteCoords(data.satelliteCoords);
+      setIsBoundaryLocked(true);
+      // 1. Confirm and Lock Boundary in backend
+      const res = await projectService.confirmBoundary(project.id, {
+        polygonVertices: data.polygonVertices,
+        polygon: data.polygonVertices,
+        satelliteCoords: data.satelliteCoords
+      });
+      if (res) {
+        setBoundaryGeometry(res);
+      }
+      // 2. Automatically generate UDCPR plot options inside the exact confirmed boundary
+      await handleGenerateMaharashtraLayouts({
+        lengthFt: data.lengthFt,
+        breadthFt: data.breadthFt,
+        polygonVertices: data.polygonVertices,
+        satelliteCoords: data.satelliteCoords,
+        jurisdictionId: 'IN_MH_PMC',
+        planningRegulation: 'UDCPR_2020'
+      });
+    } catch (err) {
+      console.error('Error confirming boundary & generating plots:', err);
+    }
+  };
+
+  const handleGeneratePlotsFromSatellite = async (cadPolygon, lengthFt, breadthFt, satCoords) => {
+    await handleGenerateMaharashtraLayouts({
+      lengthFt,
+      breadthFt,
+      polygonVertices: cadPolygon,
+      satelliteCoords: satCoords,
+      jurisdictionId: 'IN_MH_PMC',
+      planningRegulation: 'UDCPR_2020'
+    });
   };
 
   const handleTriggerAiRun = async () => {
@@ -852,9 +961,22 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 background: activeViewMode === 'VIEW_3_HYBRID' ? 'var(--df-accent)' : 'transparent',
                 color: activeViewMode === 'VIEW_3_HYBRID' ? '#ffffff' : 'var(--df-text-muted)'
               }}
-              title="View 3: Hybrid Overlay on Blueprint"
+              title="View 3: Hybrid Overlay on Satellite Imagery"
             >
               Hybrid
+            </button>
+            <button
+              onClick={() => setActiveViewMode('VIEW_SATELLITE')}
+              style={{
+                padding: '3px 9px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: activeViewMode === 'VIEW_SATELLITE' ? 'var(--df-accent)' : 'transparent',
+                color: activeViewMode === 'VIEW_SATELLITE' ? '#ffffff' : 'var(--df-text-muted)',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                transition: 'all 0.15s ease'
+              }}
+              title="View 4: Satellite Boundary Drawing & Real Land Outline"
+            >
+              🛰 Satellite Boundary
             </button>
           </div>
 
@@ -1076,9 +1198,71 @@ export default function LayoutMap({ project, onOpenPlot }) {
           >
             Hybrid View
           </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveViewMode('VIEW_SATELLITE'); }}
+            style={{
+              padding: '4px 9px', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: activeViewMode === 'VIEW_SATELLITE' ? 'var(--df-accent, #9f1239)' : 'transparent',
+              color: activeViewMode === 'VIEW_SATELLITE' ? '#ffffff' : '#94a3b8',
+              transition: 'all 0.15s ease',
+              display: 'inline-flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            🛰️ Satellite Boundary
+          </button>
         </div>
 
-        {svgContent || boundaryGeometry?.polygon ? (
+        {activeViewMode === 'VIEW_SATELLITE' ? (
+          <SatelliteBoundaryCanvas
+            project={project}
+            mode="DRAW_BOUNDARY"
+            existingPolygon={boundaryGeometry?.polygon || null}
+            existingSatelliteCoords={satelliteCoords}
+            layoutModel={satelliteLayoutModel}
+            plots={plots}
+            variants={variants}
+            selectedVariantId={selectedVariantId}
+            onSelectVariant={handleVariantSelect}
+            selectedVariant={variants.find(v => v.id === selectedVariantId) || variants[0] || null}
+            isLocked={isBoundaryLocked && satelliteCoords.length >= 3}
+            onBoundaryConfirmed={handleSatelliteBoundaryConfirmed}
+            onGeneratePlots={handleGeneratePlotsFromSatellite}
+            onClearSatelliteLayout={() => {
+              setSatelliteLayoutModel(null);
+              setIsBoundaryLocked(false);
+              setSatelliteCoords([]);
+            }}
+            isGenerating={isAutoGenerating}
+            onToggleLock={(locked) => setIsBoundaryLocked(locked !== undefined ? locked : !isBoundaryLocked)}
+            onOpenPlot={(p) => setSelectedPlot(p)}
+            onSwitchToCad={() => setActiveViewMode('VIEW_2_VECTOR')}
+          />
+        ) : activeViewMode === 'VIEW_3_HYBRID' ? (
+          <SatelliteBoundaryCanvas
+            project={project}
+            mode="HYBRID_VIEW"
+            existingPolygon={boundaryGeometry?.polygon || null}
+            existingSatelliteCoords={satelliteCoords}
+            layoutModel={satelliteLayoutModel || layoutModel}
+            plots={plots}
+            variants={variants}
+            selectedVariantId={selectedVariantId}
+            onSelectVariant={handleVariantSelect}
+            selectedVariant={variants.find(v => v.id === selectedVariantId) || variants[0] || null}
+            isLocked={isBoundaryLocked && satelliteCoords.length >= 3}
+            onBoundaryConfirmed={handleSatelliteBoundaryConfirmed}
+            onGeneratePlots={handleGeneratePlotsFromSatellite}
+            onClearSatelliteLayout={() => {
+              setSatelliteLayoutModel(null);
+              setIsBoundaryLocked(false);
+              setSatelliteCoords([]);
+            }}
+            isGenerating={isAutoGenerating}
+            onToggleLock={(locked) => setIsBoundaryLocked(locked !== undefined ? locked : !isBoundaryLocked)}
+            onOpenPlot={(p) => setSelectedPlot(p)}
+            onSwitchToCad={() => setActiveViewMode('VIEW_2_VECTOR')}
+          />
+        ) : svgContent || boundaryGeometry?.polygon ? (
           activeViewMode === 'VIEW_1_INPUT' ? (
             <div
               style={{
@@ -1130,32 +1314,6 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 );
               })()}
             </div>
-          ) : activeViewMode === 'VIEW_3_HYBRID' ? (
-            <div
-              style={{
-                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-                transformOrigin: 'center center',
-                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative'
-              }}
-            >
-              {(project?.blueprintUrl || project?.layoutSource?.fileUrl) && (
-                <img
-                  src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
-                  alt="Input Document Underlay"
-                  style={{ position: 'absolute', maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', opacity: 0.35 }}
-                />
-              )}
-              <div
-                style={{ width: '100%', height: '100%', opacity: 0.92, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                dangerouslySetInnerHTML={{ __html: svgContent }}
-              />
-            </div>
           ) : (
             <div
               style={{
@@ -1174,15 +1332,15 @@ export default function LayoutMap({ project, onOpenPlot }) {
           )
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--df-text-muted)', padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📐</div>
+            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🛰️</div>
             <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f8fafc' }}>
               No Generated Layout Found
             </div>
             <div style={{ fontSize: '0.78rem', marginTop: '6px', maxWidth: '480px', lineHeight: 1.5, color: '#94a3b8' }}>
-              Upload a blueprint or initiate the AI land understanding pipeline to extract true boundary polygons and generate valid layouts.
+              Draw your actual property boundary on the satellite map to automatically generate compliant plot layouts.
             </div>
             <button
-              onClick={() => setIsGenerateModalOpen(true)}
+              onClick={() => setActiveViewMode('VIEW_SATELLITE')}
               style={{
                 marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px',
                 padding: '8px 18px', borderRadius: '6px', background: 'var(--df-accent)',
@@ -1190,62 +1348,66 @@ export default function LayoutMap({ project, onOpenPlot }) {
                 boxShadow: '0 4px 12px rgba(159,18,57,0.3)'
               }}
             >
-              <Sparkles style={{ width: '14px', height: '14px' }} /> Run AI Land Pipeline & Generate Layouts
+              <span>🛰️ Open Satellite Boundary & Draw Land</span>
             </button>
           </div>
         )}
 
         {/* Floating CAD Navigation HUD (Bottom-Left) */}
-        <div style={{
-          position: 'absolute', bottom: '12px', left: '12px', zIndex: 100,
-          background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 10px',
-          display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
-        }}>
-          <button
-            onClick={handleZoomIn}
-            title="Zoom In (+)"
-            style={{ width: '28px', height: '28px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-          >
-            <ZoomIn style={{ width: '14px', height: '14px' }} />
-          </button>
-          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#f43f5e', minWidth: '42px', textAlign: 'center' }}>
-            {Math.round(zoomScale * 100)}%
-          </span>
-          <button
-            onClick={handleZoomOut}
-            title="Zoom Out (-)"
-            style={{ width: '28px', height: '28px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-          >
-            <ZoomOut style={{ width: '14px', height: '14px' }} />
-          </button>
-          <div style={{ width: '1px', height: '18px', background: '#334155' }} />
-          <button
-            onClick={handleFitToScreen}
-            title="Auto-Fit to Screen"
-            style={{ padding: '5px 10px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer' }}
-          >
-            ⛶ 100%
-          </button>
-        </div>
+        {(activeViewMode === 'VIEW_1_INPUT' || activeViewMode === 'VIEW_2_VECTOR') && (
+          <div style={{
+            position: 'absolute', bottom: '12px', left: '12px', zIndex: 100,
+            background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 10px',
+            display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+          }}>
+            <button
+              onClick={handleZoomIn}
+              title="Zoom In (+)"
+              style={{ width: '28px', height: '28px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <ZoomIn style={{ width: '14px', height: '14px' }} />
+            </button>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#f43f5e', minWidth: '42px', textAlign: 'center' }}>
+              {Math.round(zoomScale * 100)}%
+            </span>
+            <button
+              onClick={handleZoomOut}
+              title="Zoom Out (-)"
+              style={{ width: '28px', height: '28px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <ZoomOut style={{ width: '14px', height: '14px' }} />
+            </button>
+            <div style={{ width: '1px', height: '18px', background: '#334155' }} />
+            <button
+              onClick={handleFitToScreen}
+              title="Auto-Fit to Screen"
+              style={{ padding: '5px 10px', borderRadius: '5px', border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1', fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer' }}
+            >
+              ⛶ 100%
+            </button>
+          </div>
+        )}
 
         {/* Floating Orientation & Metrics HUD (Bottom-Right) */}
-        <div className="hide-on-mobile" style={{
-          position: 'absolute', bottom: '12px', right: '12px', zIndex: 90,
-          background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 12px',
-          display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-          pointerEvents: 'none'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f43f5e', fontSize: '0.72rem', fontWeight: 800 }}>
-            <span>🧭 N ↑</span>
+        {(activeViewMode === 'VIEW_1_INPUT' || activeViewMode === 'VIEW_2_VECTOR') && (
+          <div className="hide-on-mobile" style={{
+            position: 'absolute', bottom: '12px', right: '12px', zIndex: 90,
+            background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 12px',
+            display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            pointerEvents: 'none'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f43f5e', fontSize: '0.72rem', fontWeight: 800 }}>
+              <span>🧭 N ↑</span>
+            </div>
+            <div style={{ width: '1px', height: '14px', background: '#334155' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.68rem', fontWeight: 700 }}>
+              <span style={{ color: '#22c55e' }}>🟢 Available: {availablePlotsCount}</span>
+              <span style={{ color: '#ef4444' }}>🔴 Sold: {soldPlotsCount}</span>
+            </div>
           </div>
-          <div style={{ width: '1px', height: '14px', background: '#334155' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.68rem', fontWeight: 700 }}>
-            <span style={{ color: '#22c55e' }}>🟢 Available: {availablePlotsCount}</span>
-            <span style={{ color: '#ef4444' }}>🔴 Sold: {soldPlotsCount}</span>
-          </div>
-        </div>
+        )}
 
         {/* Selected Plot Floating Interactive Editor Drawer */}
         {selectedPlot && (
