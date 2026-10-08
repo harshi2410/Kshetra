@@ -204,7 +204,15 @@ export default function LayoutMap({ project, onOpenPlot }) {
 
   // Boundary Lock & Multi-View State
   const [isBoundaryModalOpen, setIsBoundaryModalOpen] = useState(false);
-  const [activeViewMode, setActiveViewMode] = useState('VIEW_2_VECTOR'); // 'VIEW_1_INPUT' | 'VIEW_2_VECTOR' | 'VIEW_3_HYBRID' | 'VIEW_SATELLITE'
+  const [activeViewMode, setActiveViewMode] = useState(() => {
+    if (project?.satelliteCoordsJson) {
+      try {
+        const p = JSON.parse(project.satelliteCoordsJson);
+        if (Array.isArray(p) && p.length >= 3) return 'VIEW_SATELLITE';
+      } catch (e) {}
+    }
+    return 'VIEW_2_VECTOR';
+  }); // 'VIEW_1_INPUT' | 'VIEW_2_VECTOR' | 'VIEW_3_HYBRID' | 'VIEW_SATELLITE'
   const [boundaryGeometry, setBoundaryGeometry] = useState(null);
   const [satelliteCoords, setSatelliteCoords] = useState(() => {
     if (project?.satelliteCoordsJson) {
@@ -322,12 +330,14 @@ export default function LayoutMap({ project, onOpenPlot }) {
           if (bRes.isLocked || bRes.status === 'LOCKED' || bRes.isConfirmed) {
             setIsBoundaryLocked(true);
           }
+          setActiveViewMode(prev => (prev === 'VIEW_2_VECTOR' ? 'VIEW_SATELLITE' : prev));
         } else if (project?.satelliteCoordsJson) {
           try {
             const p = JSON.parse(project.satelliteCoordsJson);
             if (Array.isArray(p) && p.length >= 3) {
               setSatelliteCoords(p);
               setIsBoundaryLocked(true);
+              setActiveViewMode(prev => (prev === 'VIEW_2_VECTOR' ? 'VIEW_SATELLITE' : prev));
             }
           } catch (e) {}
         }

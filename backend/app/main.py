@@ -3,11 +3,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 
+from contextlib import asynccontextmanager
+import logging
+
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Auto-initialize database schema, apply column migrations, and seed initial demo data
+    try:
+        from app.db.init_db import init_db
+        init_db()
+        logger.info("Database schema initialized and verified successfully.")
+    except Exception as e:
+        logger.error(f"Error auto-initializing database: {e}")
+    yield
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    description="LandOS Real Estate Operating System API Backend"
+    description="LandOS Real Estate Operating System API Backend",
+    lifespan=lifespan
 )
 
 # Set up CORS middleware to allow all development origins

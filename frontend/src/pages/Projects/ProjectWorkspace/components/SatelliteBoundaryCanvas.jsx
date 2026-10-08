@@ -13,23 +13,40 @@ import {
   resolveProjectLocation
 } from '../../../../utils/geoProjection';
 
-// Satellite Tile Providers
+// Satellite Tile Providers (Google Maps, Google Hybrid, Esri, OSM)
 const TILE_PROVIDERS = {
-  esri: {
-    name: 'Esri World Imagery',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    maxZoom: 20,
-    attribution: '&copy; Esri, Maxar, Earthstar Geographics'
+  googleHybrid: {
+    name: 'Google Satellite (Hybrid)',
+    url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 21,
+    attribution: '&copy; Google Maps'
   },
   google: {
     name: 'Google Satellite',
-    url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    url: 'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
     maxZoom: 21,
     attribution: '&copy; Google Maps'
+  },
+  googleRoads: {
+    name: 'Google Roadmap',
+    url: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 21,
+    attribution: '&copy; Google Maps'
+  },
+  esri: {
+    name: 'Esri World Imagery',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    subdomains: [],
+    maxZoom: 20,
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics'
   },
   osm: {
     name: 'OpenStreetMap Streets',
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
   }
@@ -88,7 +105,7 @@ export default function SatelliteBoundaryCanvas({
   const [history, setHistory] = useState([]);
   const [validationError, setValidationError] = useState('');
   const [confirmedData, setConfirmedData] = useState(null);
-  const [tileProviderKey, setTileProviderKey] = useState('esri');
+  const [tileProviderKey, setTileProviderKey] = useState('googleHybrid');
   const [showLabels, setShowLabels] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -125,11 +142,15 @@ export default function SatelliteBoundaryCanvas({
       attributionControl: false
     });
 
-    const activeProvider = TILE_PROVIDERS[tileProviderKey] || TILE_PROVIDERS.esri;
-    const tileLayer = L.tileLayer(activeProvider.url, {
+    const activeProvider = TILE_PROVIDERS[tileProviderKey] || TILE_PROVIDERS.googleHybrid || TILE_PROVIDERS.esri;
+    const tileLayerOpts = {
       maxZoom: activeProvider.maxZoom,
       attribution: activeProvider.attribution
-    }).addTo(map);
+    };
+    if (activeProvider.subdomains && activeProvider.subdomains.length > 0) {
+      tileLayerOpts.subdomains = activeProvider.subdomains;
+    }
+    const tileLayer = L.tileLayer(activeProvider.url, tileLayerOpts).addTo(map);
     tileLayerRef.current = tileLayer;
 
     if (showLabels) {
@@ -168,11 +189,15 @@ export default function SatelliteBoundaryCanvas({
   useEffect(() => {
     if (!mapRef.current || !tileLayerRef.current) return;
     mapRef.current.removeLayer(tileLayerRef.current);
-    const activeProvider = TILE_PROVIDERS[tileProviderKey] || TILE_PROVIDERS.esri;
-    const newTileLayer = L.tileLayer(activeProvider.url, {
+    const activeProvider = TILE_PROVIDERS[tileProviderKey] || TILE_PROVIDERS.googleHybrid || TILE_PROVIDERS.esri;
+    const tileLayerOpts = {
       maxZoom: activeProvider.maxZoom,
       attribution: activeProvider.attribution
-    }).addTo(mapRef.current);
+    };
+    if (activeProvider.subdomains && activeProvider.subdomains.length > 0) {
+      tileLayerOpts.subdomains = activeProvider.subdomains;
+    }
+    const newTileLayer = L.tileLayer(activeProvider.url, tileLayerOpts).addTo(mapRef.current);
     tileLayerRef.current = newTileLayer;
     newTileLayer.bringToBack();
   }, [tileProviderKey]);
@@ -581,13 +606,11 @@ export default function SatelliteBoundaryCanvas({
     setConfirmedData(payload);
     setActiveTool('VIEW');
 
-    // 3. Callback to parent & API persistence
+    // 3. Callback to parent & API persistence (triggers layout generation cleanly in parent)
     if (onBoundaryConfirmed) {
       onBoundaryConfirmed(payload);
-    }
-
-    // 4. Trigger Automatic Plot Generation Inside Exact Boundary
-    if (onGeneratePlots) {
+    } else if (onGeneratePlots) {
+      // Fallback if standalone generator
       onGeneratePlots(cadPolygon, lengthFt, breadthFt, satelliteCoords);
     }
   };
@@ -841,8 +864,10 @@ export default function SatelliteBoundaryCanvas({
               fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer'
             }}
           >
-            <option value="esri" style={{ background: '#0f172a' }}>Esri Satellite</option>
+            <option value="googleHybrid" style={{ background: '#0f172a' }}>Google Satellite (Hybrid)</option>
             <option value="google" style={{ background: '#0f172a' }}>Google Satellite</option>
+            <option value="googleRoads" style={{ background: '#0f172a' }}>Google Maps</option>
+            <option value="esri" style={{ background: '#0f172a' }}>Esri Satellite</option>
             <option value="osm" style={{ background: '#0f172a' }}>OpenStreetMap</option>
           </select>
         </div>
