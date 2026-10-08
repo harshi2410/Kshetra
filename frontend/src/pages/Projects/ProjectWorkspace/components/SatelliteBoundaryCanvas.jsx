@@ -54,6 +54,31 @@ const TILE_PROVIDERS = {
 
 const LABELS_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
 
+// Helper to check if a plot status qualifies as Sold/Booked (Vivid Red status)
+const isSoldStatus = (st) => {
+  if (!st) return false;
+  const s = st.toString().trim().toUpperCase();
+  return s === 'SOLD' || s === 'SELL' || s === 'SALE' || s === 'BOOKED' || s === 'RESERVED' || s.includes('SOLD');
+};
+
+// Robust matcher linking synthetic layoutModel plots (e.g. 'P-01', '1', 'plot-001') with database plot entities
+const findMatchingPlot = (plot, dbPlots) => {
+  if (!plot) return null;
+  const pNum = (plot.plotNumber || plot.plotNo || '').toString().trim().toUpperCase();
+  const pNumClean = pNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+  const pId = (plot.plotId || plot.id || '').toString().trim().toUpperCase();
+
+  return (dbPlots || []).find(p => {
+    const dbNum = (p.plotNo || p.plotNumber || '').toString().trim().toUpperCase();
+    const dbNumClean = dbNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+    const dbId = (p.id || p.plotId || '').toString().trim().toUpperCase();
+    if (pId && (dbId === pId || p.id === plot.plotId || p.plotId === plot.plotId)) return true;
+    if (pNum && dbNum && pNum === dbNum) return true;
+    if (pNumClean && dbNumClean && pNumClean === dbNumClean) return true;
+    return false;
+  });
+};
+
 export default function SatelliteBoundaryCanvas({
   project,
   mode = 'DRAW_BOUNDARY', // 'DRAW_BOUNDARY' | 'HYBRID_VIEW'
@@ -69,9 +94,9 @@ export default function SatelliteBoundaryCanvas({
   onBoundaryConfirmed,
   onGeneratePlots,
   onClearSatelliteLayout,
-  isGenerating = false,
   onToggleLock,
   onOpenPlot,
+  selectedPlot = null,
   onSwitchToCad,
 }) {
   const mapContainerRef = useRef(null);
@@ -115,12 +140,30 @@ export default function SatelliteBoundaryCanvas({
   const vertexMarkersLayerRef = useRef(null);
   const midpointMarkersLayerRef = useRef(null);
   const plotsLayerGroupRef = useRef(null);
+  const edgeLabelsLayerRef = useRef(null);
   const cursorGuideLineRef = useRef(null);
 
   // Metrics computation
   const metrics = useMemo(() => {
     return geoPolygonToCadPolygon(satelliteCoords);
   }, [satelliteCoords]);
+
+  // Inventory count breakdown with robust status matching
+  const plotsCountSummary = useMemo(() => {
+    if (!layoutModel?.plots || !Array.isArray(layoutModel.plots)) return null;
+    let available = 0;
+    let sold = 0;
+    layoutModel.plots.forEach(plot => {
+      const dbPlot = findMatchingPlot(plot, plots);
+      const rawStatus = (dbPlot?.status || plot.status || 'AVAILABLE').toString().toUpperCase();
+      if (isSoldStatus(rawStatus)) {
+        sold++;
+      } else {
+        available++;
+      }
+    });
+    return { total: layoutModel.plots.length, available, sold };
+  }, [layoutModel, plots]);
 
   // Push state to undo history
   const pushHistory = (coords) => {
@@ -171,6 +214,7 @@ export default function SatelliteBoundaryCanvas({
     vertexMarkersLayerRef.current = L.layerGroup().addTo(map);
     midpointMarkersLayerRef.current = L.layerGroup().addTo(map);
     plotsLayerGroupRef.current = L.layerGroup().addTo(map);
+    edgeLabelsLayerRef.current = L.layerGroup().addTo(map);
 
     mapRef.current = map;
 
@@ -182,6 +226,7 @@ export default function SatelliteBoundaryCanvas({
     return () => {
       map.remove();
       mapRef.current = null;
+      edgeLabelsLayerRef.current = null;
     };
   }, []);
 
@@ -263,7 +308,7 @@ export default function SatelliteBoundaryCanvas({
     };
   }, [handleMapClick]);
 
-  // Render Polygon and Markers
+  // Render Polygon, Markers, and Boundary Edge Dimensions
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -271,50 +316,101 @@ export default function SatelliteBoundaryCanvas({
     const polyLayer = boundaryPolygonLayerRef.current;
     const vertexGroup = vertexMarkersLayerRef.current;
     const midpointGroup = midpointMarkersLayerRef.current;
+    const edgeGroup = edgeLabelsLayerRef.current;
 
     if (!polyLayer || !vertexGroup || !midpointGroup) return;
+    if (edgeGroup) edgeGroup.clearLayers();
 
-    // 1. Update master boundary polygon
+    // 1. Update master boundary polygon with clean styling
     if (satelliteCoords.length >= 2) {
       polyLayer.setLatLngs(satelliteCoords);
+      const isConfirmed = isLocked || Boolean(confirmedData) || satelliteCoords.length >= 3;
       polyLayer.setStyle({
-        color: validationError ? '#ef4444' : '#f43f5e',
-        fillColor: validationError ? 'rgba(239, 68, 68, 0.25)' : 'rgba(244, 63, 94, 0.22)',
+        color: validationError ? '#ef4444' : (isLocked ? '#10b981' : '#f43f5e'),
+        weight: isLocked ? 3.5 : 3.0,
+        fillColor: isLocked ? '#10b981' : '#f43f5e',
+        // When plots are generated, keep boundary fill ultra-clean (0.04) so plots, roads & satellite beneath are 100% visible
+        fillOpacity: layoutModel ? 0.04 : (validationError ? 0.22 : (isConfirmed ? 0.08 : 0.16)),
         dashArray: activeTool === 'DRAW' ? '6, 6' : null
       });
     } else {
       polyLayer.setLatLngs([]);
     }
 
-    // 2. Update Vertex Markers
+    // 2. Render Boundary Edge Dimension Labels
+    if (edgeGroup && satelliteCoords.length >= 2) {
+      const isClosed = satelliteCoords.length >= 3 && activeTool !== 'DRAW';
+      const edgeCount = isClosed ? satelliteCoords.length : satelliteCoords.length - 1;
+
+      for (let i = 0; i < edgeCount; i++) {
+        const p1 = satelliteCoords[i];
+        const p2 = satelliteCoords[(i + 1) % satelliteCoords.length];
+        const distMeters = map.distance(L.latLng(p1[0], p1[1]), L.latLng(p2[0], p2[1]));
+        const distFt = Math.round(distMeters * 3.28084);
+        if (distFt < 2) continue;
+
+        const midLat = (p1[0] + p2[0]) / 2;
+        const midLng = (p1[1] + p2[1]) / 2;
+
+        const edgeIcon = L.divIcon({
+          className: 'landos-edge-dim-label',
+          html: `
+            <div style="
+              background: rgba(15, 23, 42, 0.90);
+              border: 1px solid rgba(56, 189, 248, 0.45);
+              color: #38bdf8;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              font-size: 9px;
+              font-weight: 800;
+              padding: 1px 5px;
+              border-radius: 4px;
+              white-space: nowrap;
+              pointer-events: none;
+              transform: translate(-50%, -50%);
+              box-shadow: 0 2px 6px rgba(0,0,0,0.7);
+              backdrop-filter: blur(6px);
+              letter-spacing: 0.02em;
+            ">
+              📐 ${distFt} FT
+            </div>
+          `,
+          iconSize: [46, 14],
+          iconAnchor: [23, 7]
+        });
+        const edgeMarker = L.marker([midLat, midLng], { icon: edgeIcon, interactive: false });
+        edgeGroup.addLayer(edgeMarker);
+      }
+    }
+
+    // 3. Update Vertex Markers
     vertexGroup.clearLayers();
     midpointGroup.clearLayers();
 
-    // In HYBRID_VIEW mode without editing, hide markers
+    // In HYBRID_VIEW mode without editing, hide vertex markers to keep map clean
     if (mode === 'HYBRID_VIEW' && activeTool === 'VIEW') {
       return;
     }
 
     satelliteCoords.forEach((pt, idx) => {
       const isStart = idx === 0;
-      const isLast = idx === satelliteCoords.length - 1;
       const icon = L.divIcon({
         className: 'landos-vertex-icon',
         html: `
-          <div style="
+          <div class="${isStart && activeTool === 'DRAW' ? 'landos-start-vertex' : ''}" style="
             width: ${isStart ? '18px' : '14px'};
             height: ${isStart ? '18px' : '14px'};
             background: ${isStart ? '#10b981' : '#f43f5e'};
             border: 2px solid #ffffff;
             border-radius: 50%;
-            box-shadow: 0 0 8px rgba(0,0,0,0.6);
+            box-shadow: 0 0 10px rgba(0,0,0,0.7), ${isStart ? '0 0 8px #10b981' : '0 0 6px #f43f5e'};
             display: flex;
             align-items: center;
             justify-content: center;
             color: #ffffff;
             font-size: 8px;
-            font-weight: 800;
+            font-weight: 900;
             cursor: ${isLocked ? 'default' : 'grab'};
+            transition: transform 0.15s ease;
           ">
             ${idx + 1}
           </div>
@@ -326,6 +422,11 @@ export default function SatelliteBoundaryCanvas({
       const marker = L.marker([pt[0], pt[1]], {
         icon,
         draggable: !isLocked && activeTool === 'EDIT'
+      });
+
+      marker.bindTooltip(`Node ${idx + 1} (${pt[0].toFixed(5)}, ${pt[1].toFixed(5)})${isStart ? ' • Start / Close' : ''}`, {
+        className: 'landos-dark-tooltip',
+        offset: [0, -10]
       });
 
       // Click start vertex in DRAW mode to close the polygon
@@ -363,7 +464,7 @@ export default function SatelliteBoundaryCanvas({
       vertexGroup.addLayer(marker);
     });
 
-    // 3. Add edge midpoints for adding vertices in EDIT mode
+    // 4. Add edge midpoints for adding vertices in EDIT mode
     if (!isLocked && activeTool === 'EDIT' && satelliteCoords.length >= 3) {
       for (let i = 0; i < satelliteCoords.length; i++) {
         const p1 = satelliteCoords[i];
@@ -377,13 +478,13 @@ export default function SatelliteBoundaryCanvas({
             <div style="
               width: 10px;
               height: 10px;
-              background: rgba(255, 255, 255, 0.9);
+              background: rgba(255, 255, 255, 0.95);
               border: 1.5px solid #f43f5e;
               border-radius: 50%;
-              box-shadow: 0 0 6px rgba(0,0,0,0.5);
+              box-shadow: 0 0 6px rgba(0,0,0,0.6);
               cursor: pointer;
               transition: transform 0.15s ease;
-            " title="Click to insert point here"></div>
+            " title="Click to insert boundary node"></div>
           `,
           iconSize: [10, 10],
           iconAnchor: [5, 5]
@@ -399,7 +500,7 @@ export default function SatelliteBoundaryCanvas({
         midpointGroup.addLayer(midMarker);
       }
     }
-  }, [satelliteCoords, activeTool, isLocked, validationError, mode]);
+  }, [satelliteCoords, activeTool, isLocked, validationError, mode, confirmedData, layoutModel]);
 
   // ──────────────────────────────── Render Hybrid Plots & Roads on Satellite ────────────────────────────────
   useEffect(() => {
@@ -417,7 +518,7 @@ export default function SatelliteBoundaryCanvas({
     if (layoutModel && layoutModel.plots && metrics.refCenter) {
       const { refCenter } = metrics;
 
-      // 1. Draw Roads
+      // 1. Draw Roads (Crisp demarcated corridor with translucent asphalt so ground is visible)
       if (layoutModel.roads && Array.isArray(layoutModel.roads)) {
         layoutModel.roads.forEach(road => {
           if (road.corridorPolygon && Array.isArray(road.corridorPolygon)) {
@@ -425,12 +526,46 @@ export default function SatelliteBoundaryCanvas({
             if (geoRoad.length >= 3) {
               const roadPoly = L.polygon(geoRoad, {
                 color: '#475569',
-                weight: 1.5,
+                weight: 1.8,
                 fillColor: '#1e293b',
-                fillOpacity: 0.65
+                fillOpacity: 0.40
               });
-              roadPoly.bindTooltip(`Road: ${road.roadName || 'Internal ROW'} (${road.widthFt || 30} FT)`, { sticky: true });
+              roadPoly.bindTooltip(`
+                <div style="font-family: Inter, system-ui, sans-serif; font-size: 10px; padding: 5px 9px; background: rgba(15,23,42,0.96); border-radius: 6px; color: #f8fafc; border: 1px solid #475569; box-shadow: 0 4px 14px rgba(0,0,0,0.7);">
+                  🛣️ <strong>${road.roadName || 'Internal Roadway'}</strong> • ${road.widthFt || 30} FT ROW (${Math.round((road.widthFt || 30) * 0.3048)}M)
+                </div>
+              `, { sticky: true, className: 'landos-dark-tooltip' });
               plotsGroup.addLayer(roadPoly);
+
+              // Road label badge at corridor centroid
+              const rLats = geoRoad.map(p => p[0]);
+              const rLngs = geoRoad.map(p => p[1]);
+              const rcLat = rLats.reduce((a, b) => a + b, 0) / rLats.length;
+              const rcLng = rLngs.reduce((a, b) => a + b, 0) / rLngs.length;
+              const roadIcon = L.divIcon({
+                className: 'landos-plot-num-label',
+                html: `
+                  <div style="
+                    background: rgba(15, 23, 42, 0.90);
+                    border: 1px dashed rgba(148, 163, 184, 0.7);
+                    color: #cbd5e1;
+                    font-family: ui-monospace, monospace;
+                    font-size: 8px;
+                    font-weight: 800;
+                    padding: 1px 6px;
+                    border-radius: 4px;
+                    white-space: nowrap;
+                    pointer-events: none;
+                    transform: translate(-50%, -50%);
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+                    letter-spacing: 0.04em;
+                  ">
+                    🛣️ ${road.roadName || 'ROAD'} (${road.widthFt || 30} FT)
+                  </div>
+                `,
+                iconSize: null
+              });
+              plotsGroup.addLayer(L.marker([rcLat, rcLng], { icon: roadIcon, interactive: false }));
             }
           }
         });
@@ -444,19 +579,51 @@ export default function SatelliteBoundaryCanvas({
             if (geoAm.length >= 3) {
               const isGreen = am.type === 'GARDEN' || am.type === 'OPEN_SPACE' || !am.type;
               const amPoly = L.polygon(geoAm, {
-                color: isGreen ? '#16a34a' : '#2563eb',
-                weight: 1.5,
-                fillColor: isGreen ? 'rgba(34, 197, 94, 0.45)' : 'rgba(59, 130, 246, 0.45)',
-                fillOpacity: 0.55
+                color: isGreen ? '#10b981' : '#3b82f6',
+                weight: 1.8,
+                fillColor: isGreen ? 'rgba(16, 185, 129, 0.32)' : 'rgba(59, 130, 246, 0.32)',
+                fillOpacity: 0.65
               });
-              amPoly.bindTooltip(`${am.name || (isGreen ? 'Open Space' : 'Amenity')} • ${Math.round(am.areaSqft || 0)} SQFT`, { sticky: true });
+              amPoly.bindTooltip(`
+                <div style="font-family: Inter, system-ui, sans-serif; font-size: 10px; padding: 5px 9px; background: rgba(15,23,42,0.96); border-radius: 6px; color: #f8fafc; border: 1.5px solid ${isGreen ? '#10b981' : '#3b82f6'}; box-shadow: 0 4px 14px rgba(0,0,0,0.7);">
+                  ${isGreen ? '🌿' : '🏛️'} <strong>${am.name || (isGreen ? 'Open Space / Garden' : 'Community Amenity')}</strong> • ${Math.round(am.areaSqft || 0)} SQFT
+                </div>
+              `, { sticky: true, className: 'landos-dark-tooltip' });
               plotsGroup.addLayer(amPoly);
+
+              // Center Amenity Badge
+              const aLats = geoAm.map(p => p[0]);
+              const aLngs = geoAm.map(p => p[1]);
+              const acLat = aLats.reduce((a, b) => a + b, 0) / aLats.length;
+              const acLng = aLngs.reduce((a, b) => a + b, 0) / aLngs.length;
+              const amIcon = L.divIcon({
+                className: 'landos-plot-num-label',
+                html: `
+                  <div style="
+                    background: rgba(6, 78, 59, 0.92);
+                    border: 1px solid #34d399;
+                    color: #ecfdf5;
+                    font-size: 9px;
+                    font-weight: 800;
+                    padding: 2px 7px;
+                    border-radius: 4px;
+                    white-space: nowrap;
+                    pointer-events: none;
+                    transform: translate(-50%, -50%);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+                  ">
+                    🌿 ${am.name || 'OPEN SPACE'} (${Math.round(am.areaSqft || 0)} SQFT)
+                  </div>
+                `,
+                iconSize: null
+              });
+              plotsGroup.addLayer(L.marker([acLat, acLng], { icon: amIcon, interactive: false }));
             }
           }
         });
       }
 
-      // 3. Draw Generated Plots (Strict Green/Red System)
+      // 3. Draw Generated Plots (Strict 2-Color Grade: Vivid Red for SOLD vs Vivid Green for AVAILABLE)
       layoutModel.plots.forEach(plot => {
         const cadPoly = plot.polygon || plot.coordinates;
         if (!cadPoly || cadPoly.length < 3) return;
@@ -464,54 +631,145 @@ export default function SatelliteBoundaryCanvas({
         const geoPoly = cadPolygonToGeoPolygon(cadPoly, refCenter);
         if (geoPoly.length < 3) return;
 
-        // Check sold status
-        const dbPlot = plots.find(p => p.id === plot.plotId || p.plotNo === plot.plotNumber || p.plotNumber === plot.plotNumber);
-        const currentStatus = dbPlot?.status || plot.status || 'AVAILABLE';
-        const isSold = currentStatus.toUpperCase() === 'SOLD' || currentStatus.toUpperCase() === 'BOOKED';
+        // Robust matching with database plots state
+        const dbPlot = findMatchingPlot(plot, plots);
+        const pNum = (plot.plotNumber || plot.plotNo || '').toString().trim().toUpperCase();
+        const displayPlotNo = plot.plotNumber || plot.plotNo || dbPlot?.plotNo || dbPlot?.plotNumber || pNum || 'P-01';
 
-        const fillColor = isSold ? 'rgba(239, 68, 68, 0.40)' : 'rgba(34, 197, 94, 0.35)';
-        const strokeColor = isSold ? '#ef4444' : '#22c55e';
+        const rawStatus = (dbPlot?.status || plot.status || 'AVAILABLE').toString().toUpperCase();
+        const isSold = isSoldStatus(rawStatus);
+
+        // Check if currently selected/inspected in UI
+        const isSelected = selectedPlot && (
+          (selectedPlot.id && (selectedPlot.id === dbPlot?.id || selectedPlot.id === plot.plotId)) ||
+          (selectedPlot.plotNumber && (selectedPlot.plotNumber === plot.plotNumber || selectedPlot.plotNumber === dbPlot?.plotNo)) ||
+          (selectedPlot.plotNo && (selectedPlot.plotNo === plot.plotNumber || selectedPlot.plotNo === dbPlot?.plotNo))
+        );
+
+        // Vivid 2-Color Grade
+        const fillColor = isSold ? 'rgba(239, 68, 68, 0.44)' : 'rgba(34, 197, 94, 0.32)';
+        const strokeColor = isSelected ? '#38bdf8' : (isSold ? '#ef4444' : '#22c55e');
+        const strokeWeight = isSelected ? 3.5 : (isSold ? 2.2 : 2.0);
 
         const poly = L.polygon(geoPoly, {
           color: strokeColor,
-          weight: 1.6,
+          weight: strokeWeight,
           fillColor: fillColor,
-          fillOpacity: 0.75
+          fillOpacity: 0.85,
+          dashArray: isSelected ? '4, 4' : null
         });
 
-        // Hover & Tooltip
-        const plotNo = plot.plotNumber || plot.plotNo;
+        const plotAreaSqft = Math.round(plot.areaSqft || dbPlot?.areaSqft || dbPlot?.area || 1200);
+        const plotAreaSqm = (plotAreaSqft * 0.092903).toFixed(1);
+        const plotDims = plot.dimensions || plot.dimensionsDisplay || dbPlot?.dimensions || `${plot.widthFt || 30} × ${plot.depthFt || 40} FT`;
+        const plotFacing = (plot.facing || dbPlot?.facing || 'NORTH').toUpperCase();
+        const plotRoad = plot.roadName || dbPlot?.roadName || 'Main Access Road';
+        const plotPrice = Number(dbPlot?.price || plot.estimatedPrice || (plotAreaSqft * 2500));
+        const customerName = dbPlot?.customerName || plot.customerName || '';
+        const paymentStatus = dbPlot?.paymentStatus || plot.paymentStatus || '';
+
+        // High-definition Rich Tooltip Card with All Plot Definitions
         poly.bindTooltip(`
-          <div style="font-family: sans-serif; font-size: 11px; padding: 3px 6px;">
-            <div style="font-weight: 800; color: ${isSold ? '#ef4444' : '#22c55e'};">
-              Plot ${plotNo} • ${isSold ? 'SOLD' : 'AVAILABLE'}
+          <div style="
+            font-family: Inter, system-ui, -apple-system, sans-serif;
+            font-size: 11px;
+            padding: 8px 11px;
+            background: rgba(15, 23, 42, 0.97);
+            border: 1.5px solid ${isSold ? '#ef4444' : '#22c55e'};
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8), ${isSold ? '0 0 12px rgba(239,68,68,0.4)' : '0 0 12px rgba(34,197,94,0.35)'};
+            color: #f8fafc;
+            min-width: 190px;
+          ">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 5px;">
+              <span style="font-weight: 900; font-size: 13px; font-family: ui-monospace, monospace; color: #ffffff;">Plot ${displayPlotNo}</span>
+              <span style="
+                font-size: 9px;
+                font-weight: 800;
+                padding: 2px 7px;
+                border-radius: 4px;
+                text-transform: uppercase;
+                background: ${isSold ? 'rgba(239, 68, 68, 0.25)' : 'rgba(34, 197, 94, 0.25)'};
+                color: ${isSold ? '#fca5a5' : '#86efac'};
+                border: 1px solid ${isSold ? '#ef4444' : '#22c55e'};
+              ">
+                ${isSold ? '● SOLD' : '● AVAILABLE'}
+              </span>
             </div>
-            <div style="color: #cbd5e1; margin-top: 2px;">
-              ${plot.areaSqft?.toLocaleString()} SQFT (${Math.round((plot.areaSqft || 0) * 0.0929)} m²)
+            <div style="display: grid; grid-template-columns: 1fr; gap: 3.5px; font-size: 10px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8;">📐 Area:</span>
+                <span style="font-weight: 800; color: #ffffff;">${plotAreaSqft.toLocaleString()} SQFT (${plotAreaSqm} m²)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8;">📏 Dimensions:</span>
+                <span style="font-weight: 700; color: #ffffff;">${plotDims}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8;">🧭 Facing:</span>
+                <span style="font-weight: 700; color: #38bdf8;">${plotFacing} Facing</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8;">🛣️ Road Access:</span>
+                <span style="font-weight: 700; color: #cbd5e1; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${plotRoad}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8;">💰 Valuation:</span>
+                <span style="font-weight: 800; color: #facc15;">₹${plotPrice.toLocaleString('en-IN')}</span>
+              </div>
+              ${isSold && customerName ? `
+              <div style="display: flex; justify-content: space-between; margin-top: 2px; padding-top: 2px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                <span style="color: #fca5a5;">👤 Buyer:</span>
+                <span style="font-weight: 700; color: #ffffff; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${customerName}</span>
+              </div>
+              ` : ''}
             </div>
-            <div style="color: #94a3b8; font-size: 10px;">
-              ${plot.dimensions || `${plot.widthFt || 30} × ${plot.depthFt || 40} FT`} • ${plot.facing || 'NORTH'}
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.15); font-size: 8.5px; color: ${isSold ? '#fca5a5' : '#86efac'}; text-align: center; font-weight: 700;">
+              Click plot to edit status (Sell / Available)
             </div>
           </div>
-        `, { sticky: true, opacity: 0.95 });
+        `, { sticky: true, className: 'landos-dark-tooltip', opacity: 0.98 });
 
         poly.on('mouseover', () => {
-          poly.setStyle({ weight: 2.8, fillOpacity: 0.9 });
+          poly.setStyle({
+            weight: 3.2,
+            fillColor: isSold ? 'rgba(220, 38, 38, 0.72)' : 'rgba(16, 185, 129, 0.62)',
+            fillOpacity: 0.95
+          });
         });
         poly.on('mouseout', () => {
-          poly.setStyle({ weight: 1.6, fillOpacity: 0.75 });
+          poly.setStyle({
+            weight: strokeWeight,
+            fillColor: fillColor,
+            fillOpacity: 0.85
+          });
         });
 
-        // Click to open plot details drawer
+        // Click to open plot details drawer with full database ID
         poly.on('click', () => {
           if (onOpenPlot) {
-            onOpenPlot(dbPlot || plot);
+            const resolvedPlotToOpen = {
+              ...(dbPlot || {}),
+              id: dbPlot?.id || plot.id || plot.plotId,
+              plotId: dbPlot?.id || plot.id || plot.plotId,
+              plotNo: displayPlotNo,
+              plotNumber: displayPlotNo,
+              area: plotAreaSqft,
+              areaSqft: plotAreaSqft,
+              areaSqm: plotAreaSqm,
+              status: isSold ? 'Sold' : 'Available',
+              dimensions: plotDims,
+              facing: plotFacing,
+              roadName: plotRoad,
+              price: plotPrice
+            };
+            onOpenPlot(resolvedPlotToOpen);
           }
         });
 
         plotsGroup.addLayer(poly);
 
-        // Center Plot Number Label
+        // Center Plot Number Label Badge (High-contrast glassmorphic design)
         if (geoPoly.length >= 3) {
           const lats = geoPoly.map(p => p[0]);
           const lngs = geoPoly.map(p => p[1]);
@@ -521,24 +779,17 @@ export default function SatelliteBoundaryCanvas({
           const labelIcon = L.divIcon({
             className: 'landos-plot-num-label',
             html: `
-              <div style="
-                background: ${isSold ? 'rgba(220,38,38,0.85)' : 'rgba(15,23,42,0.80)'};
-                border: 1px solid ${isSold ? '#ef4444' : '#22c55e'};
-                color: #ffffff;
-                font-size: 9px;
-                font-weight: 800;
-                padding: 1px 4px;
-                border-radius: 3px;
-                white-space: nowrap;
-                pointer-events: none;
-                transform: translate(-50%, -50%);
-                box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-              ">
-                ${plotNo}
+              <div class="landos-plot-pill ${isSold ? 'sold' : 'available'} ${isSelected ? 'selected' : ''}">
+                <div class="pill-title">
+                  <span class="pill-dot"></span>
+                  <span class="pill-num">${displayPlotNo}</span>
+                </div>
+                <div class="pill-sub">
+                  ${isSold ? 'SOLD' : `${plotAreaSqft} ft²`}
+                </div>
               </div>
             `,
-            iconSize: [28, 14],
-            iconAnchor: [14, 7]
+            iconSize: null
           });
 
           const labelMarker = L.marker([cLat, cLng], { icon: labelIcon, interactive: false });
@@ -546,7 +797,7 @@ export default function SatelliteBoundaryCanvas({
         }
       });
     }
-  }, [layoutModel, plots, metrics, onOpenPlot]);
+  }, [layoutModel, plots, metrics, onOpenPlot, selectedPlot]);
 
   // ──────────────────────────────── Action Callbacks ────────────────────────────────
   const handleUndo = () => {
@@ -639,6 +890,98 @@ export default function SatelliteBoundaryCanvas({
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+
+      {/* Modern styles injection */}
+      <style>{`
+        @keyframes landosPulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(16, 185, 129, 0.9); }
+          50% { transform: scale(1.18); box-shadow: 0 0 18px rgba(16, 185, 129, 1); }
+        }
+        .landos-start-vertex {
+          animation: landosPulse 2s infinite ease-in-out;
+        }
+        .leaflet-tooltip.landos-dark-tooltip {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        .leaflet-tooltip.landos-dark-tooltip::before {
+          display: none !important;
+        }
+        .landos-plot-num-label {
+          background: transparent !important;
+          border: none !important;
+          overflow: visible !important;
+          pointer-events: none;
+        }
+        .landos-plot-pill {
+          background: rgba(15, 23, 42, 0.94);
+          border: 1.5px solid #22c55e;
+          border-radius: 6px;
+          padding: 2px 7px;
+          color: #ffffff;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          white-space: nowrap;
+          transform: translate(-50%, -50%);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.7), 0 0 10px rgba(34,197,94,0.4);
+          display: inline-flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1px;
+          pointer-events: none;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .landos-plot-pill.sold {
+          background: rgba(28, 10, 15, 0.95);
+          border-color: #ef4444;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.7), 0 0 12px rgba(239,68,68,0.55);
+        }
+        .landos-plot-pill.selected {
+          border-color: #38bdf8;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.85), 0 0 16px rgba(56,189,248,0.85);
+          transform: translate(-50%, -50%) scale(1.1);
+        }
+        .landos-plot-pill .pill-title {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-weight: 800;
+          font-size: 11px;
+          line-height: 1.1;
+        }
+        .landos-plot-pill .pill-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #34d399;
+          box-shadow: 0 0 5px #34d399;
+        }
+        .landos-plot-pill.sold .pill-dot {
+          background: #ef4444;
+          box-shadow: 0 0 5px #ef4444;
+        }
+        .landos-plot-pill.selected .pill-dot {
+          background: #38bdf8;
+          box-shadow: 0 0 6px #38bdf8;
+        }
+        .landos-plot-pill .pill-sub {
+          font-size: 8px;
+          font-weight: 700;
+          opacity: 0.9;
+          color: #86efac;
+          line-height: 1;
+          letter-spacing: 0.02em;
+        }
+        .landos-plot-pill.sold .pill-sub {
+          color: #fca5a5;
+          font-weight: 900;
+          letter-spacing: 0.05em;
+        }
+        .landos-plot-pill.selected .pill-sub {
+          color: #7dd3fc;
+        }
+      `}</style>
 
       {/* Leaflet Map Canvas Target */}
       <div
@@ -962,21 +1305,31 @@ export default function SatelliteBoundaryCanvas({
           </div>
         </div>
 
-        {/* Layout Summary if Plots are Generated for this Satellite Boundary */}
-        {layoutModel?.statistics && satelliteCoords.length >= 3 && activeTool !== 'DRAW' && (
+        {/* Layout Summary & Real-time Plot Inventory Counts */}
+        {layoutModel && satelliteCoords.length >= 3 && activeTool !== 'DRAW' && (
           <div style={{
-            marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.68rem'
+            marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.12)',
+            display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.68rem'
           }}>
-            <span style={{ color: '#22c55e', fontWeight: 800 }}>
-              Plots: {layoutModel.statistics.totalPlots} Generated
-            </span>
-            <span style={{ color: '#cbd5e1' }}>
-              Roads: {layoutModel.statistics.totalRoadAreaSqm || Math.round((layoutModel.statistics.totalRoadAreaSqft || 0) * 0.0929)} m²
-            </span>
-            <span style={{ color: '#38bdf8', fontWeight: 800 }}>
-              {layoutModel.statistics.utilizationPercent}% Usable
-            </span>
+            {plotsCountSummary && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+                <span style={{ color: '#22c55e', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  🟢 {plotsCountSummary.available} Available
+                </span>
+                <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  🔴 {plotsCountSummary.sold} Sold
+                </span>
+                <span style={{ color: '#94a3b8', marginLeft: 'auto' }}>
+                  {plotsCountSummary.total} Plots Total
+                </span>
+              </div>
+            )}
+            {layoutModel.statistics && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#cbd5e1', fontSize: '0.64rem' }}>
+                <span>Roads: {layoutModel.statistics.totalRoadAreaSqm || Math.round((layoutModel.statistics.totalRoadAreaSqft || 0) * 0.0929)} m²</span>
+                <span style={{ color: '#38bdf8', fontWeight: 800 }}>{layoutModel.statistics.utilizationPercent}% Usable Area</span>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -579,22 +579,94 @@ export default function LayoutMap({ project, onOpenPlot }) {
     });
   };
 
+  // Helper to synchronously update plot status and attributes across any active layout model
+  const updatePlotsInModel = (model, resolvedId, pNum, pNumClean, newStatus, extraData = {}) => {
+    if (!model || !Array.isArray(model.plots)) return model;
+    return {
+      ...model,
+      plots: model.plots.map(p => {
+        const dbId = (p.id || p.plotId || '').toString().trim().toUpperCase();
+        const dbNum = (p.plotNo || p.plotNumber || '').toString().trim().toUpperCase();
+        const dbNumClean = dbNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+        const isMatch = (resolvedId && dbId === resolvedId.toUpperCase()) ||
+                        (pNum && dbNum === pNum) ||
+                        (pNumClean && dbNumClean === pNumClean);
+        if (isMatch) {
+          return { ...p, status: newStatus, ...extraData };
+        }
+        return p;
+      })
+    };
+  };
+
   const handleQuickStatusChange = (newStatus) => {
-    setPlotEditForm(f => {
-      const updated = { ...f, status: newStatus };
-      if ((newStatus === 'Sold' || newStatus === 'Reserved') && !f.customerName && customersList.length > 0) {
-        const c = customersList[0];
-        updated.customerId = c.id;
-        updated.customerName = c.name;
-        updated.customerPhone = c.phone;
-        updated.customerEmail = c.email || '';
-        updated.customerAddress = c.address || 'Pune';
-        updated.customerCity = c.city || 'Pune';
-        updated.agreementStatus = newStatus === 'Sold' ? 'Registered Sale Deed' : 'Token Recd & Verified';
-        updated.paymentStatus = newStatus === 'Sold' ? '100% Completed' : 'Token Advance Paid';
+    let customerInfo = {};
+    if ((newStatus === 'Sold' || newStatus === 'Reserved') && (!plotEditForm.customerName || !selectedPlot?.customerName) && customersList.length > 0) {
+      const c = customersList[0];
+      customerInfo = {
+        customerId: c.id,
+        customerName: c.name,
+        customerPhone: c.phone,
+        customerEmail: c.email || '',
+        customerAddress: c.address || 'Pune',
+        customerCity: c.city || 'Pune',
+        agreementStatus: newStatus === 'Sold' ? 'Registered Sale Deed' : 'Token Recd & Verified',
+        paymentStatus: newStatus === 'Sold' ? '100% Completed' : 'Token Advance Paid',
+      };
+    }
+
+    setPlotEditForm(f => ({ ...f, status: newStatus, ...customerInfo }));
+
+    // Real-time reactive update to plots list so Satellite & 2D CAD views flip instantly
+    const resolvedId = selectedPlot?.id || selectedPlot?.plotId;
+    const pNum = (selectedPlot?.plotNumber || selectedPlot?.plotNo || '').toString().trim().toUpperCase();
+    const pNumClean = pNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+
+    setPlots(prev => {
+      const next = [...prev];
+      const idx = next.findIndex(p => {
+        const dbId = (p.id || p.plotId || '').toString().trim().toUpperCase();
+        const dbNum = (p.plotNo || p.plotNumber || '').toString().trim().toUpperCase();
+        const dbNumClean = dbNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+        return (resolvedId && dbId === resolvedId.toUpperCase()) || (pNum && dbNum === pNum) || (pNumClean && dbNumClean === pNumClean);
+      });
+      if (idx !== -1) {
+        next[idx] = { ...next[idx], status: newStatus, ...customerInfo };
+        return next;
       }
-      return updated;
+      return [...next, { id: resolvedId, plotNo: selectedPlot?.plotNumber, plotNumber: selectedPlot?.plotNumber, status: newStatus, ...customerInfo }];
     });
+
+    // Also update plot in both satelliteLayoutModel and layoutModel so satellite canvas updates in real time
+    setSatelliteLayoutModel(prev => updatePlotsInModel(prev, resolvedId, pNum, pNumClean, newStatus, customerInfo));
+    setLayoutModel(prev => updatePlotsInModel(prev, resolvedId, pNum, pNumClean, newStatus, customerInfo));
+
+    setSelectedPlot(prev => prev ? {
+      ...prev,
+      status: newStatus,
+      rawStatus: newStatus.toUpperCase(),
+      ...customerInfo
+    } : null);
+
+    // Immediately update SVG DOM element if present
+    if (containerRef.current) {
+      const isSold = newStatus === 'Sold' || newStatus.toUpperCase() === 'SOLD';
+      const selector = `[data-plot-number="${pNum}"], #plot-poly-${pNum}, [data-plot-id="${resolvedId}"]`;
+      const poly = containerRef.current.querySelector(selector);
+      if (poly) {
+        poly.setAttribute('data-status', isSold ? 'SOLD' : 'AVAILABLE');
+        poly.setAttribute('fill', isSold ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.22)');
+        poly.setAttribute('stroke', isSold ? '#ef4444' : '#22c55e');
+        poly.setAttribute('class', `landos-plot ${isSold ? 'landos-plot-sold' : 'landos-plot-available'}`);
+      }
+    }
+
+    // Persist status change to backend asynchronously
+    if (resolvedId && project?.id) {
+      plotService.updatePlot(resolvedId, { status: newStatus, ...customerInfo }, project.id).catch(err => {
+        console.warn('Background sync error:', err);
+      });
+    }
   };
 
   // Save Plot Updates directly from map editor or drawer
@@ -624,16 +696,28 @@ export default function LayoutMap({ project, onOpenPlot }) {
       const isSold = payload.status === 'Sold' || (payload.status || '').toUpperCase() === 'SOLD';
       const newStatus = isSold ? 'Sold' : 'Available';
 
-      // 1. Update plots array in state
+      const pNum = (selectedPlot?.plotNumber || selectedPlot?.plotNo || '').toString().trim().toUpperCase();
+      const pNumClean = pNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+
+      // 1. Update plots array in state with normalized matching
       setPlots(prev => {
-        const idx = prev.findIndex(p => p.id === resolvedId || p.plotNo === selectedPlot?.plotNumber || p.plotNumber === selectedPlot?.plotNumber);
+        const next = [...prev];
+        const idx = next.findIndex(p => {
+          const dbId = (p.id || p.plotId || '').toString().trim().toUpperCase();
+          const dbNum = (p.plotNo || p.plotNumber || '').toString().trim().toUpperCase();
+          const dbNumClean = dbNum.replace(/^P-0*/i, '').replace(/^P-/i, '');
+          return (resolvedId && dbId === resolvedId.toUpperCase()) || (pNum && dbNum === pNum) || (pNumClean && dbNumClean === pNumClean);
+        });
         if (idx !== -1) {
-          const next = [...prev];
           next[idx] = { ...next[idx], ...payload, status: newStatus };
           return next;
         }
-        return [...prev, { id: resolvedId, plotNo: selectedPlot?.plotNumber, plotNumber: selectedPlot?.plotNumber, ...payload, status: newStatus }];
+        return [...next, { id: resolvedId, plotNo: selectedPlot?.plotNumber, plotNumber: selectedPlot?.plotNumber, ...payload, status: newStatus }];
       });
+
+      // Synchronously update plot in both layout models so satellite canvas updates immediately
+      setSatelliteLayoutModel(prev => updatePlotsInModel(prev, resolvedId, pNum, pNumClean, newStatus, payload));
+      setLayoutModel(prev => updatePlotsInModel(prev, resolvedId, pNum, pNumClean, newStatus, payload));
 
       // 2. Immediately update SVG DOM element
       if (containerRef.current) {
@@ -1228,7 +1312,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
             mode="DRAW_BOUNDARY"
             existingPolygon={boundaryGeometry?.polygon || null}
             existingSatelliteCoords={satelliteCoords}
-            layoutModel={satelliteLayoutModel}
+            layoutModel={satelliteLayoutModel || layoutModel}
             plots={plots}
             variants={variants}
             selectedVariantId={selectedVariantId}
@@ -1245,6 +1329,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
             isGenerating={isAutoGenerating}
             onToggleLock={(locked) => setIsBoundaryLocked(locked !== undefined ? locked : !isBoundaryLocked)}
             onOpenPlot={(p) => setSelectedPlot(p)}
+            selectedPlot={selectedPlot}
             onSwitchToCad={() => setActiveViewMode('VIEW_2_VECTOR')}
           />
         ) : activeViewMode === 'VIEW_3_HYBRID' ? (
@@ -1270,6 +1355,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
             isGenerating={isAutoGenerating}
             onToggleLock={(locked) => setIsBoundaryLocked(locked !== undefined ? locked : !isBoundaryLocked)}
             onOpenPlot={(p) => setSelectedPlot(p)}
+            selectedPlot={selectedPlot}
             onSwitchToCad={() => setActiveViewMode('VIEW_2_VECTOR')}
           />
         ) : svgContent || boundaryGeometry?.polygon ? (
