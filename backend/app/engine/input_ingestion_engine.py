@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 
 # Provider Availability Checks
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz  # PyMuPDF
     HAS_PYMUPDF = True
 except ImportError:
     try:
-        import pymupdf as fitz
+        import fitz
         HAS_PYMUPDF = True
     except ImportError:
         HAS_PYMUPDF = False

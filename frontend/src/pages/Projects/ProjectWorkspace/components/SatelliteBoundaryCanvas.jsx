@@ -9,9 +9,12 @@ import {
 import {
   geoPolygonToCadPolygon,
   cadPolygonToGeoPolygon,
+  cadPointToGeoPoint,
   checkPolygonSelfIntersection,
-  resolveProjectLocation
+  resolveProjectLocation,
+  isPointInPolygon
 } from '../../../../utils/geoProjection';
+import { projectService } from '../../../../services/projectService';
 
 // Satellite Tile Providers (Google Maps, Google Hybrid, Esri, OSM)
 const TILE_PROVIDERS = {
@@ -91,6 +94,7 @@ export default function SatelliteBoundaryCanvas({
   onSelectVariant = null,
   selectedVariant = null,
   isLocked = false,
+  isGenerating = false,
   onBoundaryConfirmed,
   onGeneratePlots,
   onClearSatelliteLayout,
@@ -98,14 +102,33 @@ export default function SatelliteBoundaryCanvas({
   onOpenPlot,
   selectedPlot = null,
   onSwitchToCad,
+  isVisible = true,
+  onCoordsChange,
+  onTogglePlotStatus,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const tileLayerRef = useRef(null);
   const labelsLayerRef = useRef(null);
+  const hasFittedRef = useRef(false);
 
-  // Drawing state
-  const [activeTool, setActiveTool] = useState('DRAW'); // 'DRAW' | 'EDIT' | 'VIEW'
+  const hasExistingBoundary = (existingSatelliteCoords && Array.isArray(existingSatelliteCoords) && existingSatelliteCoords.length >= 3) ||
+    Boolean(project?.satelliteCoordsJson && (() => {
+      try {
+        const p = JSON.parse(project.satelliteCoordsJson);
+        return Array.isArray(p) && p.length >= 3;
+      } catch (e) { return false; }
+    })());
+  const hasGeneratedPlots = Boolean(layoutModel?.plots && layoutModel.plots.length > 0);
+
+  // Drawing state: Default to VIEW if boundary or plots already exist, so user isn't forced back to raw DRAW mode
+  const [activeTool, setActiveTool] = useState(() => {
+    if (isLocked || hasExistingBoundary || hasGeneratedPlots) {
+      return 'VIEW';
+    }
+    return 'DRAW';
+  });
+
   const [satelliteCoords, setSatelliteCoords] = useState(() => {
     if (existingSatelliteCoords && Array.isArray(existingSatelliteCoords) && existingSatelliteCoords.length >= 3) {
       return existingSatelliteCoords;
@@ -124,8 +147,34 @@ export default function SatelliteBoundaryCanvas({
   useEffect(() => {
     if (existingSatelliteCoords && Array.isArray(existingSatelliteCoords) && existingSatelliteCoords.length >= 3) {
       setSatelliteCoords(existingSatelliteCoords);
+      if (activeTool === 'DRAW') {
+        setActiveTool('VIEW');
+      }
     }
   }, [existingSatelliteCoords]);
+
+  // If layoutModel or variants arrive with plots, switch activeTool to VIEW so plots and roads remain visible
+  useEffect(() => {
+    if (layoutModel?.plots && layoutModel.plots.length > 0 && activeTool === 'DRAW') {
+      setActiveTool('VIEW');
+    }
+  }, [layoutModel]);
+
+  // Report coordinate changes to parent to maintain persistent state
+  useEffect(() => {
+    if (onCoordsChange && satelliteCoords && satelliteCoords.length >= 3) {
+      onCoordsChange(satelliteCoords);
+    }
+  }, [satelliteCoords, onCoordsChange]);
+
+  // Invalidate map size when tab or view becomes visible
+  useEffect(() => {
+    if (isVisible && mapRef.current) {
+      setTimeout(() => {
+        mapRef.current?.invalidateSize();
+      }, 60);
+    }
+  }, [isVisible]);
 
   const [history, setHistory] = useState([]);
   const [validationError, setValidationError] = useState('');
@@ -134,6 +183,7 @@ export default function SatelliteBoundaryCanvas({
   const [showLabels, setShowLabels] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isDetectingBoundary, setIsDetectingBoundary] = useState(false);
 
   // Layers on map
   const boundaryPolygonLayerRef = useRef(null);
@@ -265,13 +315,14 @@ export default function SatelliteBoundaryCanvas({
   // Fit bounds if coords exist
   useEffect(() => {
     if (!mapRef.current) return;
-    if (satelliteCoords && satelliteCoords.length >= 3) {
+    if (satelliteCoords && satelliteCoords.length >= 3 && !hasFittedRef.current) {
       const bounds = L.latLngBounds(satelliteCoords);
       if (bounds.isValid()) {
         mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
+        hasFittedRef.current = true;
       }
     }
-  }, []);
+  }, [satelliteCoords]);
 
   // ──────────────────────────────── Drawing & Editing Handlers ────────────────────────────────
   const handleMapClick = useCallback((e) => {
@@ -291,10 +342,14 @@ export default function SatelliteBoundaryCanvas({
       }
     }
 
+    // Clear any stale plot layouts from previous boundaries
+    if (plotsLayerGroupRef.current) plotsLayerGroupRef.current.clearLayers();
+    if (onClearSatelliteLayout) onClearSatelliteLayout();
+
     pushHistory(satelliteCoords);
     setSatelliteCoords(prev => [...prev, newPt]);
     setValidationError('');
-  }, [activeTool, satelliteCoords]);
+  }, [activeTool, satelliteCoords, onClearSatelliteLayout]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -510,8 +565,7 @@ export default function SatelliteBoundaryCanvas({
 
     plotsGroup.clearLayers();
 
-    // Do NOT render plots if activeTool is DRAW or if there are no satelliteCoords
-    if (activeTool === 'DRAW') return;
+    // Only abort if there are no satellite coordinates to project into
     if (!satelliteCoords || satelliteCoords.length < 3) return;
 
     // Render CAD plot to Lat/Lng strictly inside the drawn satellite boundary
@@ -521,18 +575,54 @@ export default function SatelliteBoundaryCanvas({
       // 1. Draw Roads (Crisp demarcated corridor with translucent asphalt so ground is visible)
       if (layoutModel.roads && Array.isArray(layoutModel.roads)) {
         layoutModel.roads.forEach(road => {
-          if (road.corridorPolygon && Array.isArray(road.corridorPolygon)) {
-            const geoRoad = cadPolygonToGeoPolygon(road.corridorPolygon, refCenter);
+          // Resolve polygon from polygon, geometry, corridorPolygon, or build from start/end
+          let rawPoly = road.polygon || road.geometry || road.corridorPolygon || road.corridor_polygon || road.coordinates;
+          if (!Array.isArray(rawPoly) || rawPoly.length < 3) {
+            // Build corridor from start, end & widthFt if available
+            const st = road.start;
+            const en = road.end;
+            if (st && en) {
+              const sx = st.x !== undefined ? st.x : (Array.isArray(st) ? st[0] : null);
+              const sy = st.y !== undefined ? st.y : (Array.isArray(st) ? st[1] : null);
+              const ex = en.x !== undefined ? en.x : (Array.isArray(en) ? en[0] : null);
+              const ey = en.y !== undefined ? en.y : (Array.isArray(en) ? en[1] : null);
+              if (sx !== null && sy !== null && ex !== null && ey !== null) {
+                const dx = ex - sx;
+                const dy = ey - sy;
+                const len = Math.hypot(dx, dy);
+                if (len > 0) {
+                  const halfW = (road.widthFt || 30) / 2;
+                  const nx = (-dy / len) * halfW;
+                  const ny = (dx / len) * halfW;
+                  rawPoly = [
+                    { x: sx + nx, y: sy + ny },
+                    { x: ex + nx, y: ey + ny },
+                    { x: ex - nx, y: ey - ny },
+                    { x: sx - nx, y: sy - ny }
+                  ];
+                }
+              }
+            }
+          }
+
+          const roadName = road.name || road.roadName || 'Internal Road';
+          const roadWidth = road.widthFt || 30;
+
+          if (rawPoly && Array.isArray(rawPoly) && rawPoly.length >= 3) {
+            const geoRoad = cadPolygonToGeoPolygon(rawPoly, refCenter);
             if (geoRoad.length >= 3) {
               const roadPoly = L.polygon(geoRoad, {
                 color: '#475569',
-                weight: 1.8,
+                weight: 2.2,
                 fillColor: '#1e293b',
-                fillOpacity: 0.40
+                fillOpacity: 0.65
               });
               roadPoly.bindTooltip(`
-                <div style="font-family: Inter, system-ui, sans-serif; font-size: 10px; padding: 5px 9px; background: rgba(15,23,42,0.96); border-radius: 6px; color: #f8fafc; border: 1px solid #475569; box-shadow: 0 4px 14px rgba(0,0,0,0.7);">
-                  🛣️ <strong>${road.roadName || 'Internal Roadway'}</strong> • ${road.widthFt || 30} FT ROW (${Math.round((road.widthFt || 30) * 0.3048)}M)
+                <div style="font-family: Inter, system-ui, sans-serif; font-size: 11px; padding: 6px 10px; background: rgba(15,23,42,0.97); border-radius: 6px; color: #f8fafc; border: 1px solid #64748b; box-shadow: 0 4px 14px rgba(0,0,0,0.8);">
+                  <div style="font-weight: 800; font-size: 12px; margin-bottom: 3px; color: #ffffff;">🛣️ ${roadName}</div>
+                  <div style="color: #94a3b8; font-size: 10px;">📏 Width: <strong style="color: #38bdf8;">${roadWidth} FT ROW (${Math.round(roadWidth * 0.3048)}M)</strong></div>
+                  ${road.lengthFt ? `<div style="color: #94a3b8; font-size: 10px;">📐 Length: <strong style="color: #ffffff;">${Math.round(road.lengthFt)} FT</strong></div>` : ''}
+                  ${road.areaSqft ? `<div style="color: #94a3b8; font-size: 10px;">⬛ Road Corridor: <strong style="color: #ffffff;">${Math.round(road.areaSqft)} SQFT</strong></div>` : ''}
                 </div>
               `, { sticky: true, className: 'landos-dark-tooltip' });
               plotsGroup.addLayer(roadPoly);
@@ -546,26 +636,48 @@ export default function SatelliteBoundaryCanvas({
                 className: 'landos-plot-num-label',
                 html: `
                   <div style="
-                    background: rgba(15, 23, 42, 0.90);
+                    background: rgba(15, 23, 42, 0.92);
                     border: 1px dashed rgba(148, 163, 184, 0.7);
                     color: #cbd5e1;
                     font-family: ui-monospace, monospace;
                     font-size: 8px;
                     font-weight: 800;
-                    padding: 1px 6px;
+                    padding: 2px 7px;
                     border-radius: 4px;
                     white-space: nowrap;
                     pointer-events: none;
                     transform: translate(-50%, -50%);
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.7);
                     letter-spacing: 0.04em;
                   ">
-                    🛣️ ${road.roadName || 'ROAD'} (${road.widthFt || 30} FT)
+                    🛣️ ${roadName} (${roadWidth} FT)
                   </div>
                 `,
                 iconSize: null
               });
               plotsGroup.addLayer(L.marker([rcLat, rcLng], { icon: roadIcon, interactive: false }));
+            }
+          }
+
+          // Also draw road centerline dashed line if start and end are provided
+          if (road.start && road.end) {
+            const sx = road.start.x !== undefined ? road.start.x : (Array.isArray(road.start) ? road.start[0] : null);
+            const sy = road.start.y !== undefined ? road.start.y : (Array.isArray(road.start) ? road.start[1] : null);
+            const ex = road.end.x !== undefined ? road.end.x : (Array.isArray(road.end) ? road.end[0] : null);
+            const ey = road.end.y !== undefined ? road.end.y : (Array.isArray(road.end) ? road.end[1] : null);
+            if (sx !== null && sy !== null && ex !== null && ey !== null) {
+              const geoStart = cadPointToGeoPoint(sx, sy, refCenter);
+              const geoEnd = cadPointToGeoPoint(ex, ey, refCenter);
+              if (geoStart && geoEnd) {
+                const centerLine = L.polyline([geoStart, geoEnd], {
+                  color: '#fef08a',
+                  weight: 2.0,
+                  dashArray: '8, 6',
+                  opacity: 0.85,
+                  interactive: false
+                });
+                plotsGroup.addLayer(centerLine);
+              }
             }
           }
         });
@@ -624,12 +736,26 @@ export default function SatelliteBoundaryCanvas({
       }
 
       // 3. Draw Generated Plots (Strict 2-Color Grade: Vivid Red for SOLD vs Vivid Green for AVAILABLE)
+      const totalPlots = layoutModel.plots.length;
+      const isHighDensity = totalPlots > 35;
+
       layoutModel.plots.forEach(plot => {
         const cadPoly = plot.polygon || plot.coordinates;
         if (!cadPoly || cadPoly.length < 3) return;
 
         const geoPoly = cadPolygonToGeoPolygon(cadPoly, refCenter);
         if (geoPoly.length < 3) return;
+
+        // Centroid of plot
+        const lats = geoPoly.map(p => p[0]);
+        const lngs = geoPoly.map(p => p[1]);
+        const cLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+        const cLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+
+        // Strict boundary containment: discard any plot whose centroid lies outside the drawn satellite boundary
+        if (satelliteCoords.length >= 3 && !isPointInPolygon([cLat, cLng], satelliteCoords)) {
+          return;
+        }
 
         // Robust matching with database plots state
         const dbPlot = findMatchingPlot(plot, plots);
@@ -646,7 +772,7 @@ export default function SatelliteBoundaryCanvas({
           (selectedPlot.plotNo && (selectedPlot.plotNo === plot.plotNumber || selectedPlot.plotNo === dbPlot?.plotNo))
         );
 
-        // Vivid 2-Color Grade
+        // Vivid 2-Color Grade: Red for Sold / Unavailable, Green for Available
         const fillColor = isSold ? 'rgba(239, 68, 68, 0.44)' : 'rgba(34, 197, 94, 0.32)';
         const strokeColor = isSelected ? '#38bdf8' : (isSold ? '#ef4444' : '#22c55e');
         const strokeWeight = isSelected ? 3.5 : (isSold ? 2.2 : 2.0);
@@ -666,7 +792,22 @@ export default function SatelliteBoundaryCanvas({
         const plotRoad = plot.roadName || dbPlot?.roadName || 'Main Access Road';
         const plotPrice = Number(dbPlot?.price || plot.estimatedPrice || (plotAreaSqft * 2500));
         const customerName = dbPlot?.customerName || plot.customerName || '';
-        const paymentStatus = dbPlot?.paymentStatus || plot.paymentStatus || '';
+
+        const resolvedPlotObj = {
+          ...(dbPlot || {}),
+          id: dbPlot?.id || plot.id || plot.plotId,
+          plotId: dbPlot?.id || plot.id || plot.plotId,
+          plotNo: displayPlotNo,
+          plotNumber: displayPlotNo,
+          area: plotAreaSqft,
+          areaSqft: plotAreaSqft,
+          areaSqm: plotAreaSqm,
+          status: isSold ? 'Sold' : 'Available',
+          dimensions: plotDims,
+          facing: plotFacing,
+          roadName: plotRoad,
+          price: plotPrice
+        };
 
         // High-definition Rich Tooltip Card with All Plot Definitions
         poly.bindTooltip(`
@@ -725,7 +866,7 @@ export default function SatelliteBoundaryCanvas({
               ` : ''}
             </div>
             <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.15); font-size: 8.5px; color: ${isSold ? '#fca5a5' : '#86efac'}; text-align: center; font-weight: 700;">
-              Click plot to edit status (Sell / Available)
+              Click to edit in drawer • Right-click to toggle (${isSold ? 'Set Available 🟢' : 'Mark Sold 🔴'})
             </div>
           </div>
         `, { sticky: true, className: 'landos-dark-tooltip', opacity: 0.98 });
@@ -745,25 +886,23 @@ export default function SatelliteBoundaryCanvas({
           });
         });
 
-        // Click to open plot details drawer with full database ID
+        // Click to open plot details drawer
         poly.on('click', () => {
           if (onOpenPlot) {
-            const resolvedPlotToOpen = {
-              ...(dbPlot || {}),
-              id: dbPlot?.id || plot.id || plot.plotId,
-              plotId: dbPlot?.id || plot.id || plot.plotId,
-              plotNo: displayPlotNo,
-              plotNumber: displayPlotNo,
-              area: plotAreaSqft,
-              areaSqft: plotAreaSqft,
-              areaSqm: plotAreaSqm,
-              status: isSold ? 'Sold' : 'Available',
-              dimensions: plotDims,
-              facing: plotFacing,
-              roadName: plotRoad,
-              price: plotPrice
-            };
-            onOpenPlot(resolvedPlotToOpen);
+            onOpenPlot(resolvedPlotObj);
+          }
+        });
+
+        // Right-click quick toggle status (Available 🟢 <-> Sold 🔴)
+        poly.on('contextmenu', (e) => {
+          L.DomEvent.stopPropagation(e);
+          L.DomEvent.preventDefault(e);
+          const nextStatus = isSold ? 'Available' : 'Sold';
+          const toggledPlot = { ...resolvedPlotObj, status: nextStatus };
+          if (onTogglePlotStatus) {
+            onTogglePlotStatus(toggledPlot, nextStatus);
+          } else if (onOpenPlot) {
+            onOpenPlot(toggledPlot);
           }
         });
 
@@ -771,15 +910,19 @@ export default function SatelliteBoundaryCanvas({
 
         // Center Plot Number Label Badge (High-contrast glassmorphic design)
         if (geoPoly.length >= 3) {
-          const lats = geoPoly.map(p => p[0]);
-          const lngs = geoPoly.map(p => p[1]);
-          const cLat = lats.reduce((a, b) => a + b, 0) / lats.length;
-          const cLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
-
-          const labelIcon = L.divIcon({
-            className: 'landos-plot-num-label',
-            html: `
-              <div class="landos-plot-pill ${isSold ? 'sold' : 'available'} ${isSelected ? 'selected' : ''}">
+          let labelHtml = '';
+          if (isHighDensity && !isSelected) {
+            // Sleek, minimal micro-badge: avoids huge 36px cards overlapping like a deck of cards
+            const cleanNo = displayPlotNo.replace(/^P-0*/i, '').replace(/^P-/i, '');
+            labelHtml = `
+              <div class="landos-plot-micro-tag ${isSold ? 'sold' : 'available'}" title="Plot ${displayPlotNo}: ${isSold ? 'SOLD' : 'AVAILABLE'} • ${plotAreaSqft} ft²">
+                <span class="micro-dot"></span>
+                <span>${cleanNo}</span>
+              </div>
+            `;
+          } else {
+            labelHtml = `
+              <div class="landos-plot-pill ${isSold ? 'sold' : 'available'} ${isSelected ? 'selected' : ''}" title="Click to view • Right-click to toggle">
                 <div class="pill-title">
                   <span class="pill-dot"></span>
                   <span class="pill-num">${displayPlotNo}</span>
@@ -788,24 +931,86 @@ export default function SatelliteBoundaryCanvas({
                   ${isSold ? 'SOLD' : `${plotAreaSqft} ft²`}
                 </div>
               </div>
-            `,
+            `;
+          }
+
+          const labelIcon = L.divIcon({
+            className: 'landos-plot-num-label',
+            html: labelHtml,
             iconSize: null
           });
 
-          const labelMarker = L.marker([cLat, cLng], { icon: labelIcon, interactive: false });
+          const labelMarker = L.marker([cLat, cLng], { icon: labelIcon, interactive: true });
+          labelMarker.on('click', () => {
+            if (onOpenPlot) onOpenPlot(resolvedPlotObj);
+          });
+          labelMarker.on('contextmenu', (e) => {
+            L.DomEvent.stopPropagation(e);
+            L.DomEvent.preventDefault(e);
+            const nextStatus = isSold ? 'Available' : 'Sold';
+            const toggledPlot = { ...resolvedPlotObj, status: nextStatus };
+            if (onTogglePlotStatus) {
+              onTogglePlotStatus(toggledPlot, nextStatus);
+            } else if (onOpenPlot) {
+              onOpenPlot(toggledPlot);
+            }
+          });
           plotsGroup.addLayer(labelMarker);
         }
       });
     }
-  }, [layoutModel, plots, metrics, onOpenPlot, selectedPlot]);
+  }, [layoutModel, plots, metrics, onOpenPlot, selectedPlot, onTogglePlotStatus]);
 
   // ──────────────────────────────── Action Callbacks ────────────────────────────────
+  const handleAiDetectBoundary = async () => {
+    if (!project?.id) return;
+    setIsDetectingBoundary(true);
+    setValidationError('');
+    try {
+      const center = mapRef.current?.getCenter();
+      const zoom = mapRef.current?.getZoom();
+      const initialLoc = resolveProjectLocation(project);
+      const centerLat = center ? Number(center.lat.toFixed(6)) : (satelliteCoords[0]?.[0] || initialLoc.lat);
+      const centerLng = center ? Number(center.lng.toFixed(6)) : (satelliteCoords[0]?.[1] || initialLoc.lng);
+
+      const res = await projectService.detectBoundary(project.id, {
+        centerLat,
+        centerLng,
+        zoom: zoom || 18,
+        detectionMode: 'SATELLITE_AERIAL',
+        satelliteCoords: satelliteCoords.length >= 3 ? satelliteCoords : undefined
+      });
+
+      if (res && res.satelliteCoords && Array.isArray(res.satelliteCoords) && res.satelliteCoords.length >= 3) {
+        if (plotsLayerGroupRef.current) plotsLayerGroupRef.current.clearLayers();
+        if (onClearSatelliteLayout) onClearSatelliteLayout();
+
+        pushHistory(satelliteCoords);
+        setSatelliteCoords(res.satelliteCoords);
+        setActiveTool('VIEW');
+
+        const bounds = L.latLngBounds(res.satelliteCoords);
+        if (bounds.isValid() && mapRef.current) {
+          mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
+        }
+      } else {
+        setValidationError(res?.statusMessage || 'Could not auto-detect boundary at current view. Draw boundary manually using the Draw tool.');
+      }
+    } catch (err) {
+      setValidationError(`AI boundary detection error: ${err.message}`);
+    } finally {
+      setIsDetectingBoundary(false);
+    }
+  };
+
   const handleUndo = () => {
     if (history.length === 0) return;
     const prev = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
     setSatelliteCoords(prev);
     setValidationError('');
+    if (plotsLayerGroupRef.current) plotsLayerGroupRef.current.clearLayers();
+    if (onClearSatelliteLayout) onClearSatelliteLayout();
   };
 
   const handleClear = () => {
@@ -816,6 +1021,8 @@ export default function SatelliteBoundaryCanvas({
       setSatelliteCoords([]);
       setValidationError('');
       setConfirmedData(null);
+      if (plotsLayerGroupRef.current) plotsLayerGroupRef.current.clearLayers();
+      if (onClearSatelliteLayout) onClearSatelliteLayout();
     }
   };
 
@@ -981,6 +1188,39 @@ export default function SatelliteBoundaryCanvas({
         .landos-plot-pill.selected .pill-sub {
           color: #7dd3fc;
         }
+        .landos-plot-micro-tag {
+          background: rgba(15, 23, 42, 0.90);
+          border: 1px solid #22c55e;
+          border-radius: 4px;
+          padding: 1px 4px;
+          color: #86efac;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 8px;
+          font-weight: 800;
+          white-space: nowrap;
+          transform: translate(-50%, -50%);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          pointer-events: none;
+          line-height: 1;
+        }
+        .landos-plot-micro-tag.sold {
+          border-color: #ef4444;
+          color: #fca5a5;
+          background: rgba(28, 10, 15, 0.92);
+          box-shadow: 0 2px 6px rgba(239,68,68,0.4);
+        }
+        .landos-plot-micro-tag .micro-dot {
+          width: 4px;
+          height: 4px;
+          border-radius: 50%;
+          background: #22c55e;
+        }
+        .landos-plot-micro-tag.sold .micro-dot {
+          background: #ef4444;
+        }
       `}</style>
 
       {/* Leaflet Map Canvas Target */}
@@ -1002,11 +1242,31 @@ export default function SatelliteBoundaryCanvas({
         border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '5px 8px',
         boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
       }}>
+        {/* AI Auto-Detect Boundary Button */}
+        <button
+          onClick={handleAiDetectBoundary}
+          disabled={isDetectingBoundary || isLocked}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 11px',
+            borderRadius: '5px', fontSize: '0.72rem', fontWeight: 800, border: 'none', cursor: 'pointer',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+            color: '#ffffff',
+            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.45)',
+            opacity: (isDetectingBoundary || isLocked) ? 0.6 : 1, transition: 'all 0.15s ease'
+          }}
+          title="Auto-detect authentic land parcel boundary at current satellite view"
+        >
+          <Sparkles style={{ width: '13px', height: '13px' }} />
+          {isDetectingBoundary ? 'Detecting Boundary…' : 'AI Detect Boundary'}
+        </button>
+
         {/* Draw Tool */}
         <button
           onClick={() => {
             setActiveTool('DRAW');
             setValidationError('');
+            if (plotsLayerGroupRef.current) plotsLayerGroupRef.current.clearLayers();
+            if (onClearSatelliteLayout) onClearSatelliteLayout();
             if (isLocked && onToggleLock) {
               onToggleLock(false);
             }

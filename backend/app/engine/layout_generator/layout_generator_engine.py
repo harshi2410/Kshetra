@@ -922,7 +922,7 @@ class LayoutGeneratorEngine:
                     utility_percentage=eff_utility_pct,
                     base_rate_per_sqft=base_rate_per_sqft,
                     setback_ft=eff_setback_ft,
-                    max_iterations=3,
+                    max_iterations=1,
                 )
 
                 if not roads or not plots:

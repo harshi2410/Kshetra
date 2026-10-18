@@ -56,7 +56,7 @@ def test_segformer_model():
     patch[240:270, :] = 0
 
     probs = model.predict_patch(patch)
-    assert probs.shape == (7, 512, 512)
+    assert probs.shape == (len(SEMANTIC_CLASSES), 512, 512)
     # Sum of probabilities across classes should equal 1.0 at every pixel
     prob_sums = np.sum(probs, axis=0)
     assert np.allclose(prob_sums, 1.0, atol=1e-4)
@@ -68,7 +68,7 @@ def test_unet_baseline_model():
 
     patch = np.ones((512, 512, 3), dtype=np.uint8) * 255
     probs = model.predict_patch(patch)
-    assert probs.shape == (7, 512, 512)
+    assert probs.shape == (len(SEMANTIC_CLASSES), 512, 512)
 
 
 def test_segmentation_engine_full_run():

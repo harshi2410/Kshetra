@@ -24,11 +24,11 @@ except ImportError:
     HAS_OPENCV = False
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz  # PyMuPDF
     HAS_PYMUPDF = True
 except ImportError:
     try:
-        import pymupdf as fitz
+        import fitz
         HAS_PYMUPDF = True
     except ImportError:
         HAS_PYMUPDF = False

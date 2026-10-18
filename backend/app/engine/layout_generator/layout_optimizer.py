@@ -105,6 +105,10 @@ class LayoutOptimizer:
                     best_amenities = amenities
                     best_plots = plots
 
+                # High-speed convergence: if pass 1 yields a high-quality compliant layout, terminate early
+                if it_idx == 0 and len(plots) >= 4 and evaluation.get("compositeScore", 0) >= 60.0:
+                    break
+
             except Exception as e:
                 logger.warning(f"Optimization iteration {it_idx} for '{strategy_name}' notice: {e}")
 

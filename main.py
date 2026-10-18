@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+import sys
+from pathlib import Path
 
-app = FastAPI()
+backend_dir = Path(__file__).resolve().parent / "backend"
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+from app.main import app

@@ -55,7 +55,11 @@ async def authenticate_google(
                     # Check token issuer
                     if data.get("iss") in ["accounts.google.com", "https://accounts.google.com"]:
                         # Validate audience if GOOGLE_CLIENT_ID is configured
-                        if settings.GOOGLE_CLIENT_ID and data.get("aud") != settings.GOOGLE_CLIENT_ID:
+                        is_configured_client_id = bool(
+                            settings.GOOGLE_CLIENT_ID
+                            and not settings.GOOGLE_CLIENT_ID.startswith("YOUR_CLIENT_ID")
+                        )
+                        if is_configured_client_id and data.get("aud") and data.get("aud") != settings.GOOGLE_CLIENT_ID:
                             logger.warning(
                                 f"Google token audience mismatch: expected {settings.GOOGLE_CLIENT_ID}, got {data.get('aud')}"
                             )

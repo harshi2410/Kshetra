@@ -5,6 +5,17 @@ import { formatDate } from '../../../../utils/formatters';
 
 const DOCUMENTS_STORAGE_KEY = 'landos_documents_vault';
 
+const CAT_ICON = {
+  'Layout Plan': '📐',
+  'RERA Certificate': '🏛️',
+  'NA Order': '📜',
+  '7/12 Extract': '📑',
+  'Sale Agreement': '🤝',
+  'Customer Agreement': '📝',
+  'Allotment Letter': '✉️',
+  'NOC': '🛡️'
+};
+
 export default function ProjectDocuments({ project }) {
   const [documents, setDocuments] = useState(() => {
     try {

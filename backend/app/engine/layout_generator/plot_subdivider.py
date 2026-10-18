@@ -184,10 +184,18 @@ class PlotSubdivider:
         plot_seq = 1
 
         # Target dimensions (approx 3:4 to 2:3 aspect ratio)
-        target_w = max(min_plot_width_ft, min(max_plot_width_ft, math.sqrt(target_plot_sqft * 0.65)))
-        target_d = max(min_plot_depth_ft, target_plot_sqft / target_w)
+        eff_target_sqft = target_plot_sqft
+        if land.total_area_sqft > 120000 and target_plot_sqft < 1800:
+            # Dynamically adapt target plot size on large parcels (> 2.7 acres) so we don't generate massive plot clutter
+            eff_target_sqft = max(target_plot_sqft, min(2800.0, land.total_area_sqft / 75.0))
+
+        target_w = max(min_plot_width_ft, min(max_plot_width_ft, math.sqrt(eff_target_sqft * 0.65)))
+        target_d = max(min_plot_depth_ft, eff_target_sqft / target_w)
 
         for b_idx, block in enumerate(blocks_geoms):
+            if len(plots) >= 100:
+                break
+
             if block.is_empty or block.area < (min_plot_sqft * 0.55):
                 continue
 
@@ -200,16 +208,21 @@ class PlotSubdivider:
             block_w = b_maxx - b_minx
             block_h = b_maxy - b_miny
 
-            # Determine row count based on standard plot depths (e.g. 40-50ft single row, 80-100ft double row)
-            if block_h <= (target_d * 1.55):
+            # In UDCPR civil engineering, plots along an access corridor are single-loaded or double-loaded.
+            # A block without internal roads should not exceed 2 rows of plots (max depth ~80-100ft).
+            if block_h <= (target_d * 1.6):
                 rows = 1
             else:
-                rows = max(1, int(round(block_h / target_d)))
+                rows = min(2, max(1, int(round(block_h / target_d))))
 
             row_height = block_h / rows
+            if block_h > (target_d * 2.3):
+                row_height = min(target_d * 1.15, block_h / rows)
 
             for r in range(rows):
-                r_miny = b_miny + (r * row_height)
+                if len(plots) >= 100:
+                    break
+                r_miny = b_miny + (r * row_height) if r == 0 else max(b_miny + row_height, b_maxy - row_height)
                 r_maxy = r_miny + row_height
                 row_strip_box = shapely_box(b_minx - 10.0, r_miny, b_maxx + 10.0, r_maxy)
                 row_geom = block.intersection(row_strip_box)

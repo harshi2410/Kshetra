@@ -24,6 +24,7 @@ from app.engine.layout_generator.layout_generator_engine import LayoutGeneratorE
 from app.engine.layout_exporter import LayoutExporter
 from app.engine.planning_norms_engine import planning_norms_engine_instance, DynamicPlanningNormsEvaluation
 from app.engine.boundary_detection_engine import boundary_detection_engine_instance
+from app.engine.satellite_boundary_detector import satellite_boundary_detector_instance
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -56,6 +57,10 @@ class DetectBoundaryRequest(BaseModel):
     customPoints: Optional[List[List[float]]] = Field(None, description="Manual vertex coordinates")
     widthFt: Optional[float] = Field(None, description="Manual width override in feet")
     breadthFt: Optional[float] = Field(None, description="Manual breadth override in feet")
+    centerLat: Optional[float] = Field(None, description="Map center latitude for satellite boundary detection")
+    centerLng: Optional[float] = Field(None, description="Map center longitude for satellite boundary detection")
+    satelliteCoords: Optional[List[List[float]]] = Field(None, description="Existing or clicked satellite coordinates [[lat, lng], ...]")
+    zoom: Optional[int] = Field(17, description="Current map zoom level")
 
 
 
@@ -171,7 +176,34 @@ def detect_boundary(
     detection_mode = req.detectionMode if req and req.detectionMode else "AUTO"
 
     detection_res = None
-    if req and req.customPoints and len(req.customPoints) >= 3:
+    is_satellite = (
+        detection_mode == "SATELLITE_AERIAL"
+        or (req and (req.centerLat is not None or (req.satelliteCoords and len(req.satelliteCoords) >= 3)))
+        or (project.satellite_coords_json and not layout_source)
+    )
+
+    if is_satellite:
+        c_lat = (req.centerLat if req and req.centerLat is not None else None) or (getattr(project, "latitude", None)) or 18.5204
+        c_lng = (req.centerLng if req and req.centerLng is not None else None) or (getattr(project, "longitude", None)) or 73.8567
+        coords_input = req.satelliteCoords if (req and req.satelliteCoords and len(req.satelliteCoords) >= 3) else None
+        if not coords_input and project.satellite_coords_json:
+            try:
+                parsed_sc = json.loads(project.satellite_coords_json)
+                if isinstance(parsed_sc, list) and len(parsed_sc) >= 3:
+                    coords_input = parsed_sc
+            except Exception:
+                coords_input = None
+
+        sat_res = satellite_boundary_detector_instance.detect_satellite_parcel(
+            center_lat=c_lat,
+            center_lng=c_lng,
+            existing_coords=coords_input,
+            zoom=req.zoom if (req and req.zoom) else 17
+        )
+        if sat_res and sat_res.get("isValid"):
+            detection_res = sat_res
+
+    if not detection_res and req and req.customPoints and len(req.customPoints) >= 3:
         detection_res = {
             "isValid": True,
             "inputCategory": "MANUAL",
@@ -181,7 +213,7 @@ def detect_boundary(
             "statusMessage": "Using manual boundary vertices.",
             "shapeType": "MANUAL_POLYGON"
         }
-    elif layout_source and layout_source.file_path:
+    elif not detection_res and layout_source and layout_source.file_path:
         detection_res = boundary_detection_engine_instance.detect_from_file(
             layout_source.file_path,
             epsilon_ratio=epsilon_ratio,
@@ -233,8 +265,8 @@ def detect_boundary(
         verts,
         epsilon_ratio=epsilon_ratio
     )
-    area_sqft = float(poly_obj.area) if poly_obj else 0.0
-    peri_ft = float(poly_obj.length) if poly_obj else 0.0
+    area_sqft = float(poly_obj.area) if poly_obj else (detection_res.get("areaSqft") or 0.0)
+    peri_ft = float(poly_obj.length) if poly_obj else (detection_res.get("perimeterFt") or 0.0)
     shape_meta = boundary_detection_engine_instance.classify_shape_characteristics(poly_obj) if poly_obj else {}
 
     final_polygon = clean_v or verts
@@ -244,6 +276,7 @@ def detect_boundary(
         "polygon": final_polygon,
         "polygonVertices": final_polygon,
         "detectedBoundary": final_polygon,
+        "satelliteCoords": detection_res.get("satelliteCoords"),
         "inputCategory": detection_res.get("inputCategory", "WHITE_PAGE_DRAWING"),
         "shapeType": shape_meta.get("shapeType", detection_res.get("shapeType", "IRREGULAR")),
         "areaSqft": round(area_sqft, 1),
@@ -509,12 +542,42 @@ def generate_layouts(project_id: str, req: GenerateLayoutsRequest, db: Session =
     project.status = "ACTIVE"
     db.commit()
 
+    # Pre-extract active model and plots to return in one single response (eliminates 3 sequential roundtrips)
+    first_v = variants[0] if variants else None
+    first_model = first_v.to_layout_model() if first_v else None
+    first_svg = first_v.to_svg() if first_v else None
+
+    if first_model and req.satelliteCoords and len(req.satelliteCoords) >= 3:
+        first_model["satelliteCoords"] = req.satelliteCoords
+
+    saved_plots_records = db.query(ProjectPlot).filter(ProjectPlot.project_id == project_id).all()
+    plots_response = [
+        {
+            "id": p.id,
+            "plotId": p.id,
+            "plotNo": p.plot_number,
+            "plotNumber": p.plot_number,
+            "area": float(p.calculated_area_sqft or 0.0),
+            "areaSqft": float(p.calculated_area_sqft or 0.0),
+            "areaSqm": round(float(p.calculated_area_sqft or 0.0) * 0.092903, 1),
+            "status": p.status,
+            "price": float(p.base_price or 0.0),
+            "facing": p.facing_direction,
+            "notes": p.notes,
+        }
+        for p in saved_plots_records
+    ]
+
     return {
         "projectId": project_id,
         "validOptionsCount": len(saved_summaries),
         "message": f"Successfully generated {len(saved_summaries)} valid layout options under Maharashtra UDCPR norms.",
         "failureReasons": [],
         "variants": saved_summaries,
+        "activeVariantId": saved_summaries[0].id if saved_summaries else None,
+        "activeLayoutModel": first_model,
+        "activeSvgContent": first_svg,
+        "plots": plots_response,
     }
 
 

@@ -3,7 +3,8 @@ import {
   X, ZoomIn, ZoomOut, Maximize2, Layers, Info, CheckCircle2,
   Edit2, Download, FileText, Sparkles, Check, ChevronDown,
   Activity, ShieldCheck, CheckCircle, AlertTriangle, RefreshCw, Eye,
-  User, Phone, Mail, Save, Tag, MapPin, FileCheck, CreditCard, Calendar
+  User, Phone, Mail, Save, Tag, MapPin, FileCheck, CreditCard, Calendar,
+  FileCode, Map as MapIcon
 } from 'lucide-react';
 import projectService from '../../../../services/projectService';
 import plotService from '../../../../services/plotService';
@@ -221,10 +222,23 @@ export default function LayoutMap({ project, onOpenPlot }) {
         if (Array.isArray(p) && p.length >= 3) return p;
       } catch (e) {}
     }
+    try {
+      const saved = localStorage.getItem(`landos_satellite_coords_${project?.id}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (Array.isArray(p) && p.length >= 3) return p;
+      }
+    } catch (e) {}
     return [];
   });
   // Dedicated layout model strictly for the satellite boundary view (prevents showing predefined 2D CAD plots)
-  const [satelliteLayoutModel, setSatelliteLayoutModel] = useState(null);
+  const [satelliteLayoutModel, setSatelliteLayoutModel] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`landos_satellite_layout_${project?.id}`);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return null;
+  });
   const [isBoundaryLocked, setIsBoundaryLocked] = useState(() => {
     if (project?.satelliteCoordsJson) {
       try {
@@ -232,6 +246,13 @@ export default function LayoutMap({ project, onOpenPlot }) {
         if (Array.isArray(p) && p.length >= 3) return true;
       } catch (e) {}
     }
+    try {
+      const saved = localStorage.getItem(`landos_satellite_coords_${project?.id}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (Array.isArray(p) && p.length >= 3) return true;
+      }
+    } catch (e) {}
     return false;
   });
 
@@ -261,8 +282,15 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Parallelize high-priority API calls for 10x faster map loading
+      const [runs, variantList, plotList, bRes] = await Promise.all([
+        projectService.getProjectAiRuns(project.id).catch(() => null),
+        projectService.getProjectVariants(project.id).catch(() => null),
+        plotService.getPlotsByProject(project.id).catch(() => []),
+        projectService.detectBoundary(project.id).catch(() => null)
+      ]);
+
       // 1. Check AI runs
-      const runs = await projectService.getProjectAiRuns(project.id);
       if (runs && runs.length > 0) {
         const latestRun = runs[0];
         setActiveJob(latestRun);
@@ -277,28 +305,24 @@ export default function LayoutMap({ project, onOpenPlot }) {
         }
       }
 
-      // 2. Fetch generated layout variants
-      const variantList = await projectService.getProjectVariants(project.id);
+      // 2. Process generated layout variants
       if (variantList && variantList.length > 0) {
         setVariants(variantList);
         const activeVariant = variantList.find(v => v.isSelected) || variantList[0];
         setSelectedVariantId(activeVariant.id);
 
-        const svgRes = await projectService.getVariantSvg(project.id, activeVariant.id);
-        const modelRes = await projectService.getVariantModel(project.id, activeVariant.id);
+        const [svgRes, modelRes] = await Promise.all([
+          projectService.getVariantSvg(project.id, activeVariant.id).catch(() => null),
+          projectService.getVariantModel(project.id, activeVariant.id).catch(() => null)
+        ]);
 
         if (svgRes?.svgContent) setSvgContent(svgRes.svgContent);
         if (modelRes) {
           setLayoutModel(modelRes);
-          // Only associate this model with the satellite view if satellite coordinates exist
-          if (project?.satelliteCoordsJson) {
-            try {
-              const sc = JSON.parse(project.satelliteCoordsJson);
-              if (Array.isArray(sc) && sc.length >= 3) {
-                setSatelliteLayoutModel(modelRes);
-              }
-            } catch (e) {}
-          }
+          setSatelliteLayoutModel(modelRes);
+          try {
+            localStorage.setItem(`landos_satellite_layout_${project.id}`, JSON.stringify(modelRes));
+          } catch (e) {}
         }
       } else {
         // Fallback to layout sources
@@ -306,16 +330,21 @@ export default function LayoutMap({ project, onOpenPlot }) {
         const lId = sources?.[0]?.id || project?.layoutSource?.id || 'default-layout';
         setCurrentLayoutId(lId);
 
-        const svgRes = await projectService.getLayoutSvg(project.id, lId);
-        const modelRes = await projectService.getLayoutModel(project.id, lId);
+        const [svgRes, modelRes] = await Promise.all([
+          projectService.getLayoutSvg(project.id, lId).catch(() => null),
+          projectService.getLayoutModel(project.id, lId).catch(() => null)
+        ]);
 
         if (svgRes?.svgContent) setSvgContent(svgRes.svgContent);
-        if (modelRes) setLayoutModel(modelRes);
+        if (modelRes) {
+          setLayoutModel(modelRes);
+          setSatelliteLayoutModel(modelRes);
+        }
       }
 
-      const plotList = await plotService.getPlotsByProject(project.id);
-      setPlots(plotList || []);
-      setSvgContent(prev => applyTwoColorPlotStyles(prev, plotList || []));
+      const activePlots = plotList || [];
+      setPlots(activePlots);
+      setSvgContent(prev => applyTwoColorPlotStyles(prev, activePlots));
       setCustomersList(plotService.getAllCustomers());
 
       // Load confirmed or detected boundary polygon
@@ -330,6 +359,9 @@ export default function LayoutMap({ project, onOpenPlot }) {
           if (bRes.isLocked || bRes.status === 'LOCKED' || bRes.isConfirmed) {
             setIsBoundaryLocked(true);
           }
+          try {
+            localStorage.setItem(`landos_satellite_coords_${project.id}`, JSON.stringify(bRes.satelliteCoords));
+          } catch (e) {}
           setActiveViewMode(prev => (prev === 'VIEW_2_VECTOR' ? 'VIEW_SATELLITE' : prev));
         } else if (project?.satelliteCoordsJson) {
           try {
@@ -337,6 +369,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
             if (Array.isArray(p) && p.length >= 3) {
               setSatelliteCoords(p);
               setIsBoundaryLocked(true);
+              localStorage.setItem(`landos_satellite_coords_${project.id}`, JSON.stringify(p));
               setActiveViewMode(prev => (prev === 'VIEW_2_VECTOR' ? 'VIEW_SATELLITE' : prev));
             }
           } catch (e) {}
@@ -389,9 +422,10 @@ export default function LayoutMap({ project, onOpenPlot }) {
       if (svgRes?.svgContent) setSvgContent(applyTwoColorPlotStyles(svgRes.svgContent, plots));
       if (modelRes) {
         setLayoutModel(modelRes);
-        if (satelliteCoords.length >= 3) {
-          setSatelliteLayoutModel(modelRes);
-        }
+        setSatelliteLayoutModel(modelRes);
+        try {
+          localStorage.setItem(`landos_satellite_layout_${project.id}`, JSON.stringify(modelRes));
+        } catch (e) {}
       }
     } catch (err) {
       console.error('Error switching variant:', err);
@@ -411,6 +445,8 @@ export default function LayoutMap({ project, onOpenPlot }) {
   const handleGenerateMaharashtraLayouts = async (params) => {
     setIsAutoGenerating(true);
     setFailureReasons([]);
+    // Immediately clear stale satellite layout model so old plots never linger or shift outside the new boundary
+    setSatelliteLayoutModel(null);
     const isSatelliteGen = Boolean(params?.satelliteCoords && params.satelliteCoords.length >= 3);
     try {
       const res = await projectService.generateLayouts(project.id, params);
@@ -422,21 +458,34 @@ export default function LayoutMap({ project, onOpenPlot }) {
           }
         } else {
           setVariants(res.variants);
-          const first = res.variants[0];
-          setSelectedVariantId(first.id);
-          const svgRes = await projectService.getVariantSvg(project.id, first.id);
-          const modelRes = await projectService.getVariantModel(project.id, first.id);
-          if (svgRes?.svgContent) setSvgContent(applyTwoColorPlotStyles(svgRes.svgContent, plots));
-          if (modelRes) {
-            setLayoutModel(modelRes);
-            if (isSatelliteGen) {
-              setSatelliteLayoutModel(modelRes);
-            }
+          const activeVid = res.activeVariantId || res.variants[0].id;
+          setSelectedVariantId(activeVid);
+
+          // Fast path: use active layout model, SVG, and plots returned directly in response!
+          let modelRes = res.activeLayoutModel;
+          let svgContent = res.activeSvgContent;
+          let plotList = res.plots;
+
+          if (!modelRes || !svgContent) {
+            const [svgFetch, modelFetch, plotsFetch] = await Promise.all([
+              projectService.getVariantSvg(project.id, activeVid).catch(() => null),
+              projectService.getVariantModel(project.id, activeVid).catch(() => null),
+              plotService.getPlotsByProject(project.id).catch(() => [])
+            ]);
+            svgContent = svgFetch?.svgContent;
+            modelRes = modelFetch;
+            plotList = plotsFetch || [];
           }
 
-          // Fetch updated plots list from database
-          const plotList = await plotService.getPlotsByProject(project.id);
-          setPlots(plotList || []);
+          if (plotList) setPlots(plotList);
+          if (svgContent) setSvgContent(applyTwoColorPlotStyles(svgContent, plotList || []));
+          if (modelRes) {
+            setLayoutModel(modelRes);
+            setSatelliteLayoutModel(modelRes);
+            try {
+              localStorage.setItem(`landos_satellite_layout_${project.id}`, JSON.stringify(modelRes));
+            } catch (e) {}
+          }
 
           if (isSatelliteGen) {
             // Keep user on the satellite view so generated plots appear right there on satellite
@@ -458,6 +507,9 @@ export default function LayoutMap({ project, onOpenPlot }) {
     try {
       setSatelliteCoords(data.satelliteCoords);
       setIsBoundaryLocked(true);
+      try {
+        localStorage.setItem(`landos_satellite_coords_${project.id}`, JSON.stringify(data.satelliteCoords));
+      } catch (e) {}
       // 1. Confirm and Lock Boundary in backend
       const res = await projectService.confirmBoundary(project.id, {
         polygonVertices: data.polygonVertices,
@@ -482,6 +534,13 @@ export default function LayoutMap({ project, onOpenPlot }) {
   };
 
   const handleGeneratePlotsFromSatellite = async (cadPolygon, lengthFt, breadthFt, satCoords) => {
+    if (satCoords && Array.isArray(satCoords) && satCoords.length >= 3) {
+      setSatelliteCoords(satCoords);
+      setIsBoundaryLocked(true);
+      try {
+        localStorage.setItem(`landos_satellite_coords_${project.id}`, JSON.stringify(satCoords));
+      } catch (e) {}
+    }
     await handleGenerateMaharashtraLayouts({
       lengthFt,
       breadthFt,
@@ -1151,7 +1210,7 @@ export default function LayoutMap({ project, onOpenPlot }) {
                     fontWeight: 600, color: 'var(--df-text)', display: 'flex', alignItems: 'center', gap: '6px'
                   }}
                 >
-                  <Map style={{ width: '13px', height: '13px' }} /> GIS GeoJSON (.json)
+                  <MapIcon style={{ width: '13px', height: '13px' }} /> GIS GeoJSON (.json)
                 </button>
                 <button
                   onClick={() => handleExport('csv')}
@@ -1226,16 +1285,16 @@ export default function LayoutMap({ project, onOpenPlot }) {
       <div
         ref={containerRef}
         className="layout-canvas-responsive"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        onDoubleClick={handleFitToScreen}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onClick={handleSvgClick}
+        onMouseDown={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleMouseDown : undefined}
+        onMouseMove={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleMouseMove : undefined}
+        onMouseUp={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleMouseUp : undefined}
+        onMouseLeave={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleMouseUp : undefined}
+        onWheel={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleWheel : undefined}
+        onDoubleClick={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleFitToScreen : undefined}
+        onTouchStart={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleTouchStart : undefined}
+        onTouchMove={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleTouchMove : undefined}
+        onTouchEnd={(activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? handleTouchEnd : undefined}
+        onClick={activeViewMode === 'VIEW_2_VECTOR' ? handleSvgClick : undefined}
         style={{
           position: isFullscreen ? 'fixed' : 'relative',
           inset: isFullscreen ? 0 : 'auto',
@@ -1247,8 +1306,8 @@ export default function LayoutMap({ project, onOpenPlot }) {
           border: isFullscreen ? 'none' : '1px solid #1e293b',
           borderRadius: isFullscreen ? 0 : '8px',
           overflow: 'hidden',
-          cursor: isDragging ? 'grabbing' : 'grab',
-          touchAction: 'none',
+          cursor: (activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          touchAction: (activeViewMode === 'VIEW_2_VECTOR' || activeViewMode === 'VIEW_1_INPUT') ? 'none' : 'auto',
           boxShadow: isFullscreen ? 'none' : 'var(--df-shadow-md)'
         }}
       >
@@ -1306,13 +1365,21 @@ export default function LayoutMap({ project, onOpenPlot }) {
           </button>
         </div>
 
-        {activeViewMode === 'VIEW_SATELLITE' ? (
+        {/* Satellite Map Canvas View (Always mounted so map state, tiles, zoom, pan & plots never disappear) */}
+        <div style={{
+          display: (activeViewMode === 'VIEW_SATELLITE' || activeViewMode === 'VIEW_3_HYBRID') ? 'block' : 'none',
+          width: '100%',
+          height: '100%',
+          position: 'absolute',
+          inset: 0
+        }}>
           <SatelliteBoundaryCanvas
             project={project}
-            mode="DRAW_BOUNDARY"
+            mode={activeViewMode === 'VIEW_3_HYBRID' ? 'HYBRID_VIEW' : 'DRAW_BOUNDARY'}
+            isVisible={activeViewMode === 'VIEW_SATELLITE' || activeViewMode === 'VIEW_3_HYBRID'}
             existingPolygon={boundaryGeometry?.polygon || null}
             existingSatelliteCoords={satelliteCoords}
-            layoutModel={satelliteLayoutModel || layoutModel}
+            layoutModel={satelliteLayoutModel}
             plots={plots}
             variants={variants}
             selectedVariantId={selectedVariantId}
@@ -1321,96 +1388,90 @@ export default function LayoutMap({ project, onOpenPlot }) {
             isLocked={isBoundaryLocked && satelliteCoords.length >= 3}
             onBoundaryConfirmed={handleSatelliteBoundaryConfirmed}
             onGeneratePlots={handleGeneratePlotsFromSatellite}
+            onCoordsChange={(coords) => {
+              setSatelliteCoords(coords);
+              try {
+                localStorage.setItem(`landos_satellite_coords_${project?.id}`, JSON.stringify(coords));
+              } catch (e) {}
+            }}
             onClearSatelliteLayout={() => {
               setSatelliteLayoutModel(null);
               setIsBoundaryLocked(false);
               setSatelliteCoords([]);
+              try {
+                localStorage.removeItem(`landos_satellite_coords_${project?.id}`);
+                localStorage.removeItem(`landos_satellite_layout_${project?.id}`);
+              } catch (e) {}
             }}
             isGenerating={isAutoGenerating}
             onToggleLock={(locked) => setIsBoundaryLocked(locked !== undefined ? locked : !isBoundaryLocked)}
             onOpenPlot={(p) => setSelectedPlot(p)}
-            selectedPlot={selectedPlot}
-            onSwitchToCad={() => setActiveViewMode('VIEW_2_VECTOR')}
-          />
-        ) : activeViewMode === 'VIEW_3_HYBRID' ? (
-          <SatelliteBoundaryCanvas
-            project={project}
-            mode="HYBRID_VIEW"
-            existingPolygon={boundaryGeometry?.polygon || null}
-            existingSatelliteCoords={satelliteCoords}
-            layoutModel={satelliteLayoutModel || layoutModel}
-            plots={plots}
-            variants={variants}
-            selectedVariantId={selectedVariantId}
-            onSelectVariant={handleVariantSelect}
-            selectedVariant={variants.find(v => v.id === selectedVariantId) || variants[0] || null}
-            isLocked={isBoundaryLocked && satelliteCoords.length >= 3}
-            onBoundaryConfirmed={handleSatelliteBoundaryConfirmed}
-            onGeneratePlots={handleGeneratePlotsFromSatellite}
-            onClearSatelliteLayout={() => {
-              setSatelliteLayoutModel(null);
-              setIsBoundaryLocked(false);
-              setSatelliteCoords([]);
+            onTogglePlotStatus={(plot, newStatus) => {
+              setSelectedPlot(plot);
+              handleQuickStatusChange(newStatus);
             }}
-            isGenerating={isAutoGenerating}
-            onToggleLock={(locked) => setIsBoundaryLocked(locked !== undefined ? locked : !isBoundaryLocked)}
-            onOpenPlot={(p) => setSelectedPlot(p)}
             selectedPlot={selectedPlot}
             onSwitchToCad={() => setActiveViewMode('VIEW_2_VECTOR')}
           />
-        ) : svgContent || boundaryGeometry?.polygon ? (
-          activeViewMode === 'VIEW_1_INPUT' ? (
-            <div
-              style={{
-                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-                transformOrigin: 'center center',
-                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative'
-              }}
-            >
-              {(project?.blueprintUrl || project?.layoutSource?.fileUrl) && (
-                <img
-                  src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
-                  alt="Input Document Underlay"
-                  style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', opacity: 0.65 }}
-                />
-              )}
-              {boundaryGeometry?.polygon && (() => {
-                const bxs = boundaryGeometry.polygon.map(p => p[0]);
-                const bys = boundaryGeometry.polygon.map(p => p[1]);
-                const minBx = Math.min(...bxs);
-                const maxBx = Math.max(...bxs);
-                const minBy = Math.min(...bys);
-                const maxBy = Math.max(...bys);
-                const bw = Math.max(50, maxBx - minBx);
-                const bh = Math.max(50, maxBy - minBy);
-                const pad = Math.max(15, bw * 0.08);
-                const vb = `${minBx - pad} ${minBy - pad} ${bw + 2 * pad} ${bh + 2 * pad}`;
-                return (
-                  <svg
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-                    viewBox={vb}
-                    preserveAspectRatio="xMidYMid meet"
-                  >
-                    <polygon
-                      points={boundaryGeometry.polygon.map(p => `${p[0]},${p[1]}`).join(' ')}
-                      fill="rgba(159, 18, 57, 0.18)"
-                      stroke="#9f1239"
-                      strokeWidth="3"
-                    />
-                    {boundaryGeometry.polygon.map((p, i) => (
-                      <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#f43f5e" stroke="#ffffff" strokeWidth="1.5" />
-                    ))}
-                  </svg>
-                );
-              })()}
-            </div>
-          ) : (
+        </div>
+
+        {/* View 1: Input Document + Boundary Overlay */}
+        {activeViewMode === 'VIEW_1_INPUT' && (
+          <div
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+          >
+            {(project?.blueprintUrl || project?.layoutSource?.fileUrl) && (
+              <img
+                src={project?.blueprintUrl || project?.layoutSource?.fileUrl}
+                alt="Input Document Underlay"
+                style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', opacity: 0.65 }}
+              />
+            )}
+            {boundaryGeometry?.polygon && (() => {
+              const bxs = boundaryGeometry.polygon.map(p => p[0]);
+              const bys = boundaryGeometry.polygon.map(p => p[1]);
+              const minBx = Math.min(...bxs);
+              const maxBx = Math.max(...bxs);
+              const minBy = Math.min(...bys);
+              const maxBy = Math.max(...bys);
+              const bw = Math.max(50, maxBx - minBx);
+              const bh = Math.max(50, maxBy - minBy);
+              const pad = Math.max(15, bw * 0.08);
+              const vb = `${minBx - pad} ${minBy - pad} ${bw + 2 * pad} ${bh + 2 * pad}`;
+              return (
+                <svg
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+                  viewBox={vb}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <polygon
+                    points={boundaryGeometry.polygon.map(p => `${p[0]},${p[1]}`).join(' ')}
+                    fill="rgba(159, 18, 57, 0.18)"
+                    stroke="#9f1239"
+                    strokeWidth="3"
+                  />
+                  {boundaryGeometry.polygon.map((p, i) => (
+                    <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#f43f5e" stroke="#ffffff" strokeWidth="1.5" />
+                  ))}
+                </svg>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* View 2: Clean 2D Vector CAD Plan */}
+        {activeViewMode === 'VIEW_2_VECTOR' && (
+          svgContent ? (
             <div
               style={{
                 transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
@@ -1425,28 +1486,28 @@ export default function LayoutMap({ project, onOpenPlot }) {
               }}
               dangerouslySetInnerHTML={{ __html: svgContent }}
             />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--df-text-muted)', padding: '24px', textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🛰️</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f8fafc' }}>
+                No Generated 2D Layout Found
+              </div>
+              <div style={{ fontSize: '0.78rem', marginTop: '6px', maxWidth: '480px', lineHeight: 1.5, color: '#94a3b8' }}>
+                Draw your property boundary on the satellite map to automatically generate compliant plot layouts.
+              </div>
+              <button
+                onClick={() => setActiveViewMode('VIEW_SATELLITE')}
+                style={{
+                  marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 18px', borderRadius: '6px', background: 'var(--df-accent)',
+                  color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(159,18,57,0.3)'
+                }}
+              >
+                <span>🛰️ Open Satellite Boundary & Draw Land</span>
+              </button>
+            </div>
           )
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--df-text-muted)', padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🛰️</div>
-            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f8fafc' }}>
-              No Generated Layout Found
-            </div>
-            <div style={{ fontSize: '0.78rem', marginTop: '6px', maxWidth: '480px', lineHeight: 1.5, color: '#94a3b8' }}>
-              Draw your actual property boundary on the satellite map to automatically generate compliant plot layouts.
-            </div>
-            <button
-              onClick={() => setActiveViewMode('VIEW_SATELLITE')}
-              style={{
-                marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '8px 18px', borderRadius: '6px', background: 'var(--df-accent)',
-                color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(159,18,57,0.3)'
-              }}
-            >
-              <span>🛰️ Open Satellite Boundary & Draw Land</span>
-            </button>
-          </div>
         )}
 
         {/* Floating CAD Navigation HUD (Bottom-Left) */}

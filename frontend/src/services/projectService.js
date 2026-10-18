@@ -12,19 +12,26 @@ const BASE_ROOT_PATHS = [
   'http://localhost:8000/api/v1'
 ];
 
+let cachedWorkingRootPath = null;
+
 async function apiFetchRoot(path = '', options = {}) {
+  const pathsToTry = cachedWorkingRootPath
+    ? [cachedWorkingRootPath, ...BASE_ROOT_PATHS.filter(p => p !== cachedWorkingRootPath)]
+    : BASE_ROOT_PATHS;
+
   let lastErr = null;
   let lastRes = null;
-  for (const basePath of BASE_ROOT_PATHS) {
+  for (const basePath of pathsToTry) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const res = await fetch(`${basePath}${path}`, {
         ...options,
         signal: controller.signal
       });
       clearTimeout(timeoutId);
       if (res.ok) {
+        cachedWorkingRootPath = basePath;
         return res;
       }
       if (!lastRes) lastRes = res;
@@ -36,19 +43,26 @@ async function apiFetchRoot(path = '', options = {}) {
   throw lastErr || new Error('Backend API unreachable');
 }
 
+let cachedWorkingBasePath = null;
+
 async function apiFetch(path = '', options = {}) {
+  const pathsToTry = cachedWorkingBasePath
+    ? [cachedWorkingBasePath, ...BASE_PATHS.filter(p => p !== cachedWorkingBasePath)]
+    : BASE_PATHS;
+
   let lastErr = null;
   let lastRes = null;
-  for (const basePath of BASE_PATHS) {
+  for (const basePath of pathsToTry) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const res = await fetch(`${basePath}${path}`, {
         ...options,
         signal: controller.signal
       });
       clearTimeout(timeoutId);
       if (res.ok) {
+        cachedWorkingBasePath = basePath;
         return res;
       }
       if (!lastRes) lastRes = res;
